@@ -42,6 +42,22 @@
   CP sem dado = reprovado; gatilho Econometria dispara com dado ausente.
 - `composicaoSimulado` usa maior-resto (Hamilton) e preserva a ordem de chaves do blueprint.
 
+## 2026-07-16 — Fase 2 entregue (Store + seeds)
+
+- `js/store.js`: dual Dexie(`bcbDB` v1)/localStorage(`bcb1_*`) com **API genérica**
+  (`add/put/get/all/update/remove/clear`) — desvio deliberado do CRUD-por-entidade do R+
+  (lá os defaults duplicados são gotcha; aqui 11 tabelas tornariam insustentável).
+  Backup exige `bundle.app==='bcb-study'` (rejeita backup do R+). `resetAll` apaga só `bcb1*`.
+- `js/seeds.js`: §8 literal (107+8, `console.assert` + throw), §9 (35 semanas: F1 grade
+  literal, F2 ciclos C1–C6, F3 + 3 de buffer), §10 (6 checkpoints). `seedAll` idempotente
+  **preserva progresso** (status/driveUrl/geradoEm) e atualiza campos pedagógicos.
+- **Premissa nova:** enum de status do microconteúdo = `PENDENTE→GERADO→EM_ESTUDO→CONCLUIDO`
+  (✅ do mapa curricular = CONCLUIDO). A spec não fixa o enum; corrigir aqui se discordar.
+- **Premissa nova:** na F1, códigos EST-xx aparecem no slot Lógica do §9.1 (semanas 5/7/8) —
+  seedados como estão (estatística de base é manutenção embutida, §9.1 nota).
+- Gate: `node tests/store.test.js` 47/47 + regressão motor 66/66. Modo `idb` será validado
+  no navegador na Fase 3 (Node não tem IndexedDB; fallback ls cobre a lógica comum).
+
 ## Pendências que bloqueiam fases
 
 | Fase bloqueada | Pendência | Quem |
