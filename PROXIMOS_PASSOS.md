@@ -26,10 +26,10 @@ O Claude lê este arquivo + `docs/` e sabe onde parou.
 - [x] **Fase 8:** SRS — D+1/7/15/30 + react, urgência atraso×10+pesoStage, Difícil=+2d sem regredir, dobra ~15% em DIR/LOG/COS/EEC, teto diário ajustável, reconstrução retroativa sem estourar teto, gancho micro→EM_ESTUDO/CONCLUIDO agenda D+1, badge na nav · **gates: puros 42/42 + e2e fase-8 11/11 + regressões**
 - [x] **Fase 9:** Registro de sessões (frente+minutos+desfazer) · horizontes por território com paceBar/pmark/pílulas (pacing herdado) e total da semana · Stats: streak, heatmap 84d, curva semanal do líquido (ref CP1 60%), calibração real×esperado, mapa de erros por taxonomia, tempo médio/item, cobertura ponderada + examPacing · charts re-renderizam ao abrir o pane · **gates: e2e fase-9 13/13 + regressões**
 - [x] **Fase 10:** Checkpoints CP0-CP4+GAP com semáforo lendo dados vivos (avaliaCheckpoint; futuro=meta, vencido reprovado=pendente c/ lista de mínimos) e gatilho automático da Econometria a partir da semana 10 (dispara sem dado ou <60%, desarma ao atingir; premissa: discursivas contam registros) · **gates: e2e fase-10 11/11 + regressões**
-- [ ] **Fase 11 (próxima):** Gap analysis — colar edital Auditor 2027, diff contra 2024, marcar NOVO/REMOVIDO/REFORMULADO/IGUAL, ativar dormentes, criar BLUEPRINT_2027 (recalibra limiar/pesos) sem redeploy
-- [ ] Fases 7–12 conforme §14 da spec
+- [x] **Fase 11:** Gap analysis — colar edital 2027, diff Jaccard por linha (IGUAL≥0,75/REFORMULADO≥0,35/NOVO; ativos sem match=REMOVIDO), gatilhos regex acordam dormentes (→ território CONT, fim da fila), relatório persistido em settings, BLUEPRINT_2027 por formulário com limiar recalibrado (p>−erro/(acerto−erro)) ativável/reversível sem redeploy · **e2e 16/16**
+- [x] **Fase 12:** Export 03-Mapa-Curricular.md regenerado com ✅/📄 (fecha o loop do Drive) · allowlist admin no Plano (master convida/remove; oculta em modo local) · hardening: error boundary global, SRI em todos os CDNs jsDelivr, validação de backup por app, prefixos isolados
 
-### Notas para a Fase 4
+### Pendências abertas (todas do dono)
 - Cópia canônica de código é o index.html; tests/_extract.js compila os blocos p/ Node.
 - PENDÊNCIA DO DONO (prazo 15/08): publicar firestore.rules no console do aprov-bacen
   (Firestore → Regras → colar o arquivo → Publicar). Sem isso o modo de teste expira.

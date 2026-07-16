@@ -58,6 +58,22 @@
 - Gate: `node tests/store.test.js` 47/47 + regressão motor 66/66. Modo `idb` será validado
   no navegador na Fase 3 (Node não tem IndexedDB; fallback ls cobre a lógica comum).
 
+## 2026-07-16 — Fases 5-12 entregues (app completo)
+
+Premissas registradas durante a implementação (corrigir se discordar):
+- **Linha de discursiva** = 70 caracteres; parágrafo vazio conta 1 (bloqueio absoluto da UI).
+- **Discursivas nos checkpoints** contam registros (cada versão é uma prática de escrita).
+- **Simulado mini/parcial**: duração proporcional aos 210min do completo; hard stop registra
+  restante como BRANCO conf 1 (sem flag de calibração); estado em memória (sair = entregar).
+- **Dormentes ativados** pelo gap analysis vão para o território `CONT` e mantêm prioridade
+  CONT (fim da fila de geração).
+- **BLUEPRINT_2027**: `corrigirItem` aceita acerto/erro custom e o limiar é recalibrado
+  (p > −erro/(acerto−erro)); ⚠ o agregado `liquido()` continua na convenção Cebraspe −0,5 —
+  se o edital 2027 mudar a penalização, ajustar agregadores na fase pós-edital (pendência
+  condicional).
+- **SRS**: 'Difícil' reagenda +2d sem regredir; react promove direto ao stage 2; dobra
+  ~15% (mín. 1 dia) em DIREITO/LOGICA/COSIF/ECONOMETRIA; teto corta exibição, não o banco.
+
 ## Pendências que bloqueiam fases
 
 | Fase bloqueada | Pendência | Quem |

@@ -297,7 +297,16 @@ html[data-theme=dark] .hm i.l1{background:#1c5cab}html[data-theme=dark] .hm i.l2
           <label class="btn sec small" style="display:inline-flex;cursor:pointer">Importar<input type="file" id="fileImport" accept=".json" style="display:none"></label>
           <button class="btn danger small" id="btnReset">Zerar dados</button>
         </div>
-        <p class="empty" style="margin-top:10px">Blueprint ativo: <b id="bpAtivo">2024</b> · 120 itens C/E · +1,00/−0,50 · limiar de marcação 33,33%. Gap analysis e allowlist chegam nas Fases 11–12.</p>
+        <p class="empty" style="margin-top:10px">Blueprint ativo: <b id="bpAtivo">2024</b> · <span id="bpResumo"></span></p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button class="btn sec small" id="btnGap">🧭 Gap analysis (edital 2027)</button>
+          <button class="btn sec small" id="btnMapa03">📤 Exportar 03-Mapa-Curricular.md</button>
+        </div>
+        <div id="allowBox" style="display:none;margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+          <label style="font-size:.72rem;color:var(--ink2)">🔐 Beta fechado (allowlist) — só master</label>
+          <div style="display:flex;gap:6px;margin:6px 0"><input id="allowEmail" type="email" placeholder="email@gmail.com"><button class="btn small" id="btnAllow">Convidar</button></div>
+          <div id="allowLista" class="empty">—</div>
+        </div>
       </div>
     </section>
   </div>
@@ -330,16 +339,20 @@ html[data-theme=dark] .hm i.l1{background:#1c5cab}html[data-theme=dark] .hm i.l2
 // 0.3333 < 1/3 marcaria itens com EV negativo). Exibição: LIMIAR_LABEL.
 var LIMIAR = 1 / 3;
 var LIMIAR_LABEL = '33,33%';
+// Limiar genérico p/ qualquer pontuação (§12.10 recalibra no gap analysis):
+// EV = p·acerto + (1−p)·erro > 0  ⟺  p > −erro/(acerto−erro).
+function limiarDe(acerto, erro) { return -erro / (acerto - erro); }
 
 // ── §5.1 Pontuação (score SEMPRE derivado) ──────────────────────────────────
-function corrigirItem(resposta, gabarito) {
+function corrigirItem(resposta, gabarito, acerto, erro) {
   if (resposta !== 'C' && resposta !== 'E' && resposta !== 'BRANCO')
     throw new Error('resposta inválida: ' + resposta);
   if (gabarito !== 'C' && gabarito !== 'E')
     throw new Error('gabarito inválido: ' + gabarito);
   if (resposta === 'BRANCO') return { correto: null, score: 0 };
   var ok = resposta === gabarito;
-  return { correto: ok, score: ok ? 1.0 : -0.5 };
+  // defaults Cebraspe 2024; blueprint 2027 pode recalibrar (§12.10)
+  return { correto: ok, score: ok ? (acerto === undefined ? 1.0 : acerto) : (erro === undefined ? -0.5 : erro) };
 }
 
 // ── §5.3 Percentual líquido — A métrica. Bruto é secundário. ────────────────
@@ -477,7 +490,7 @@ function composicaoSimulado(blueprint, n) {
 var M = {
   LIMIAR: LIMIAR, LIMIAR_LABEL: LIMIAR_LABEL, FAIXA_CONFIANCA: FAIXA_CONFIANCA,
   TIPOS_ERRO: TIPOS_ERRO, BLUEPRINT_2024: BLUEPRINT_2024,
-  corrigirItem: corrigirItem, corrigirLote: corrigirLote,
+  corrigirItem: corrigirItem, corrigirLote: corrigirLote, limiarDe: limiarDe,
   liquido: liquido, bruto: bruto,
   evMarcar: evMarcar, deveMarcar: deveMarcar,
   erroCalibracaoItem: erroCalibracaoItem, brier: brier,
@@ -1110,6 +1123,72 @@ function montarSimulado(banco, composicao, rnd) {
   return { fila: fila, faltantes: faltantes, totalFaltante: Object.keys(faltantes).reduce(function (s, k) { return s + faltantes[k]; }, 0) };
 }
 
+// ── Fase 11: gap analysis (§12.10) — puro ───────────────────────────────────
+function _toks(s) {
+  return new Set(String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 2; }));
+}
+function _jaccard(a, b) {
+  var inter = 0;
+  a.forEach(function (x) { if (b.has(x)) inter++; });
+  var uni = a.size + b.size - inter;
+  return uni ? inter / uni : 0;
+}
+// Compara o conteúdo programático colado (1 tópico por linha) com os 107
+// ativos: IGUAL ≥0,75 · REFORMULADO ≥0,35 · senão NOVO; ativo sem match =
+// REMOVIDO. Gatilhos acordam dormentes. Nada é gravado — quem decide é a UI.
+function gapAnalysis(texto, micros) {
+  var ativos = micros.filter(function (m) { return !m.dormente; });
+  var base = ativos.map(function (m) { return { codigo: m.codigo, toks: _toks(m.nome) }; });
+  var usados = {}, marcas = [];
+  String(texto || '').split('\n').map(function (l) { return l.trim(); })
+    .filter(function (l) { return l.length >= 8; })
+    .forEach(function (l) {
+      var toks = _toks(l), melhor = { s: 0, cod: null };
+      base.forEach(function (b) {
+        var s = _jaccard(toks, b.toks);
+        if (s > melhor.s) melhor = { s: s, cod: b.codigo };
+      });
+      var tipo = melhor.s >= 0.75 ? 'IGUAL' : melhor.s >= 0.35 ? 'REFORMULADO' : 'NOVO';
+      if (tipo !== 'NOVO') usados[melhor.cod] = true;
+      marcas.push({ linha: l, tipo: tipo, match: tipo === 'NOVO' ? null : melhor.cod, score: +melhor.s.toFixed(4) });
+    });
+  var removidos = ativos.filter(function (m) { return !usados[m.codigo]; }).map(function (m) { return m.codigo; });
+  var tl = String(texto || '').toLowerCase();
+  var ativar = [];
+  if (/4\.?595|sistema financeiro nacional|lc\s*179/.test(tl)) ativar.push('CONT-SFN-01', 'CONT-SFN-02', 'CONT-SFN-03');
+  if (/responsabilidade fiscal|lrf|or[cç]ament|\bppa\b|\bldo\b|\bloa\b/.test(tl)) ativar.push('CONT-FP-01', 'CONT-FP-02', 'CONT-FP-03');
+  if (/constitucional/.test(tl)) ativar.push('CONT-DC-01');
+  if (/4\.?320|direito financeiro/.test(tl)) ativar.push('CONT-DF-01');
+  return { marcas: marcas, removidos: removidos, dormentesAtivar: ativar };
+}
+
+// ── Fase 12: mapa curricular regenerado (fecha o loop do Drive, §2/§12.9) ───
+function gerarMapa03(micros, dataStr) {
+  var ordemT = ['PORTUGUES', 'MACRO', 'FINANCAS', 'COSIF', 'MICRO', 'FMM', 'ECONOMETRIA', 'LOGICA', 'ESTATISTICA', 'DIREITO', 'ATU', 'CONT'];
+  var out = ['# 03 — Mapa Curricular BCB Study (v4, regenerado pelo app em ' + dataStr + ')', '',
+    '> ✅ = CONCLUIDO · 📄 = arquivo no Drive · ordem = fila de geração (MAX→ALTA→MEDIA→HEDGE→F2→CONT)', ''];
+  ordemT.forEach(function (terr) {
+    var lista = micros.filter(function (m) { return (m.territorio || 'CONT') === terr && !m.dormente; })
+      .sort(function (a, b) { return a.ordem - b.ordem; });
+    if (!lista.length) return;
+    out.push('## ' + terr, '');
+    lista.forEach(function (m) {
+      out.push('- [' + (m.status === 'CONCLUIDO' ? 'x' : ' ') + '] **' + m.codigo + '** — ' + m.nome +
+        ' _(' + (m.itemEdital || '—') + ' · ' + m.prioridade + ' · ' + (m.dificuldade || '—') + ' · ' + m.status + ')_' +
+        (m.driveUrl ? ' · [📄 Drive](' + m.driveUrl + ')' : ''));
+    });
+    out.push('');
+  });
+  var dorm = micros.filter(function (m) { return m.dormente; });
+  if (dorm.length) {
+    out.push('## DORMENTES (aguardando gap analysis)', '');
+    dorm.forEach(function (m) { out.push('- [ ] **' + m.codigo + '** — ' + m.nome + ' _(gatilho: ' + m.gatilho + ')_'); });
+    out.push('');
+  }
+  return out.join('\n');
+}
+
 // ── Fase 8: SRS (§12.6) — máquina pura de revisão espaçada ──────────────────
 // Stages numéricos 1..4 = D+1/D+7/D+15/D+30 + stage 'react' (reativação).
 // Dobra do perfil (§3): territórios que evaporam sem ancoragem têm intervalos
@@ -1256,7 +1335,8 @@ var M = {
   LINHA_CHARS: LINHA_CHARS, contarLinhas: contarLinhas, diffLinhas: diffLinhas,
   SRS_GAPS: SRS_GAPS, SRS_ULTIMO_STAGE: SRS_ULTIMO_STAGE, DOBRAR: DOBRAR,
   intervaloComDobra: intervaloComDobra, reviewUrgency: reviewUrgency,
-  agendaRevisao: agendaRevisao, seedRetro: seedRetro, addDias: addDias
+  agendaRevisao: agendaRevisao, seedRetro: seedRetro, addDias: addDias,
+  gapAnalysis: gapAnalysis, gerarMapa03: gerarMapa03
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = M;
 else root.Seeds = M;
@@ -1377,8 +1457,31 @@ function status() {
   return user.email + (t ? ' · sync ' + new Date(t).toLocaleTimeString('pt-BR').slice(0, 5) : ' · sem sync');
 }
 
+async function allowList() {
+  if (!enabled || !user || !isMaster(user.email)) return [];
+  try {
+    var snap = await db.collection('allowed_users').get();
+    return snap.docs.map(function (d) { return d.data(); });
+  } catch (e) { lastErr = e; return []; }
+}
+async function allowAdd(email) {
+  email = (email || '').trim().toLowerCase();
+  if (!enabled || !user || !isMaster(user.email)) return false;
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { if (typeof toast === 'function') toast('Email inválido.'); return false; }
+  try {
+    await db.collection('allowed_users').doc(email).set({ email: email, enabled: true, role: 'tester', addedBy: user.email, addedAt: Date.now() });
+    if (typeof renderAllowlist === 'function') renderAllowlist();
+    if (typeof toast === 'function') toast(email + ' convidado.');
+    return true;
+  } catch (e) { lastErr = e; if (typeof toast === 'function') toast('Falha ao convidar: ' + (e && e.message)); return false; }
+}
+async function allowRemove(email) {
+  if (!enabled || !user || !isMaster(user.email)) return;
+  try { await db.collection('allowed_users').doc(email).delete(); if (typeof renderAllowlist === 'function') renderAllowlist(); } catch (e) { lastErr = e; }
+}
 return { init: init, signIn: signIn, signOut: signOut, schedulePush: schedulePush,
          push: push, isMaster: isMaster, status: status,
+         allowList: allowList, allowAdd: allowAdd, allowRemove: allowRemove,
          get enabled() { return enabled; }, get user() { return user; }, get allowed() { return allowed; } };
 })();
 /*</cloud>*/
@@ -1719,6 +1822,18 @@ window.salvarDrive = async function (cod) {
   toast(v ? 'Link do Drive salvo.' : 'Link removido.');
 };
 function renderSyncStatus() { var el = $('miSyncV'); if (el) el.textContent = Cloud.status(); }
+async function renderAllowlist() {
+  var box = $('allowBox');
+  if (!box) return;
+  var master = Cloud.enabled && Cloud.user && Cloud.isMaster(Cloud.user.email);
+  box.style.display = master ? 'block' : 'none';
+  if (!master) return;
+  var lista = await Cloud.allowList();
+  $('allowLista').innerHTML = lista.length ? lista.map(function (u) {
+    return '<div class="rowline"><span>' + esc(u.email) + (u.enabled ? '' : ' <small>(desativado)</small>') + '</span>' +
+      '<button class="btn sec small" onclick="Cloud.allowRemove(\'' + esc(u.email) + '\')">remover</button></div>';
+  }).join('') : '<span class="empty">Só você (master). Convide testadores pelo email Google.</span>';
+}
 
 // ═══════════ FASE 5 — ITENS C/E (§12.3) ═══════════
 // Fluxo TRAVADO: ler → confiança 1-5 (não muda depois) → C/E/Branco →
@@ -1888,7 +2003,21 @@ window.gerarLoteMicro = async function (cod) {
 // sem flag — branco de tempo não é erro de calibração). Estado em memória:
 // sair da página = entregar o que foi feito (premissa em DECISOES).
 var sim = null; // {fila, idx, loteId, confianca, fim, timer, duracaoSeg}
-function blueprintAtivo() { return MotorCebraspe.BLUEPRINT_2024; }
+function blueprintAtivo() {
+  return (D.blueprintAtivo === '2027' && D.blueprint2027) ? D.blueprint2027 : MotorCebraspe.BLUEPRINT_2024;
+}
+function limiarLabel() {
+  var bp = blueprintAtivo();
+  return MotorCebraspe.fmtPct(MotorCebraspe.limiarDe(bp.acerto, bp.erro), 2);
+}
+function renderBlueprint() {
+  var bp = blueprintAtivo();
+  var el = $('bpAtivo'); if (el) el.textContent = bp.versao;
+  var r = $('bpResumo');
+  if (r) r.textContent = bp.totalItens + ' itens C/E · +' + bp.acerto.toFixed(2).replace('.', ',') + '/' +
+    bp.erro.toFixed(2).replace('.', ',') + ' · limiar de marcação ' + limiarLabel() +
+    ' · ' + bp.discursivas.qtd + ' discursivas de ' + bp.discursivas.pontos + ' pts';
+}
 window.iniciarSimulado = async function (n, duracaoSegOverride) {
   if (!Store.ready) return;
   var banco = await Store.all('banco');
@@ -1924,7 +2053,7 @@ function renderSimItem() {
   var html =
     '<div style="display:flex;justify-content:space-between;align-items:center">' +
     '<span class="sub">🕐 <b id="simTimer">—</b> · item ' + (sim.idx + 1) + '/' + sim.fila.length + '</span>' +
-    '<span class="badge">limiar ' + MotorCebraspe.LIMIAR_LABEL + '</span></div>' +
+    '<span class="badge">limiar ' + limiarLabel() + '</span></div>' +
     '<p style="font-size:.92rem;margin:10px 0 12px;white-space:pre-wrap">' + esc(q.enunciado) + '</p>';
   if (passo === 1) {
     html += '<label>Confiança (trava)</label><div class="stbtns">' +
@@ -1942,7 +2071,8 @@ function renderSimItem() {
 window.simConfianca = function (c) { sim.confianca = c; renderSimItem(); };
 window.simResponder = async function (resp) {
   var q = sim.fila[sim.idx];
-  var r = MotorCebraspe.corrigirItem(resp, q.gabarito);
+  var bp = blueprintAtivo();
+  var r = MotorCebraspe.corrigirItem(resp, q.gabarito, bp.acerto, bp.erro);
   await Store.add('itens', {
     data: today(), bancoId: q.id, microcodigo: q.microcodigo, territorio: q.territorio,
     loteId: sim.loteId, resposta: resp, correto: r.correto, confianca: sim.confianca,
@@ -2019,6 +2149,98 @@ window.classificarErroCorrecao = async function (id, tipo) {
   if (row) row.querySelector('select').outerHTML = '<span class="stchip st-GERADO">' + esc(tipo) + '</span>';
 };
 
+// ═══════════ FASE 11 — GAP ANALYSIS (§12.10) ═══════════
+window.abrirGap = function () {
+  $('itemSheet').innerHTML =
+    '<h3>\u{1F9ED} Gap analysis — edital Auditor 2027</h3>' +
+    '<p class="empty">Cole o conteúdo programático (1 tópico por linha). O diff marca IGUAL / REFORMULADO / NOVO / REMOVIDO e detecta gatilhos dos módulos dormentes. Nada é gravado até você confirmar.</p>' +
+    '<textarea id="gapTxt" rows="8" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px;font-size:.78rem;color:inherit"></textarea>' +
+    '<button class="btn" style="margin-top:10px" onclick="rodarGap()">Analisar</button>' +
+    '<div id="gapResult" style="margin-top:10px;font-size:.8rem"></div>' +
+    '<div style="border-top:1px solid var(--line);margin:14px 0 8px;padding-top:10px">' +
+    '<label style="font-size:.74rem;color:var(--ink2)"><b>Blueprint 2027</b> — confirme com o edital em mãos (banca, formato, pontuação, discursivas, pesos)</label>' +
+    '<div class="row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px">' +
+    '<div><label>Itens</label><input type="number" id="bpItens" value="120"></div>' +
+    '<div><label>Acerto</label><input type="number" step="0.25" id="bpAcerto" value="1"></div>' +
+    '<div><label>Erro</label><input type="number" step="0.25" id="bpErro" value="-0.5"></div></div>' +
+    '<div class="row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px">' +
+    '<div><label>Duração (min)</label><input type="number" id="bpDur" value="210"></div>' +
+    '<div><label>Discursivas</label><input type="number" id="bpDq" value="2"></div>' +
+    '<div><label>Pts/disc</label><input type="number" id="bpDp" value="50"></div></div>' +
+    '<label style="margin-top:6px">Pesos (JSON — chaves do blueprint)</label>' +
+    '<textarea id="bpPesos" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px;font-family:ui-monospace,monospace;font-size:.72rem;color:inherit">' +
+    esc(JSON.stringify(MotorCebraspe.BLUEPRINT_2024.pesos)) + '</textarea>' +
+    '<div id="bpLimiar" class="empty" style="margin-top:4px"></div>' +
+    '<button class="btn" style="margin-top:8px" onclick="ativarBlueprint2027()">Ativar BLUEPRINT_2027</button>' +
+    (D.blueprintAtivo === '2027' ? '<button class="btn sec" style="margin-top:6px" onclick="voltarBlueprint2024()">Voltar ao 2024</button>' : '') +
+    '</div>' +
+    '<button class="btn sec" style="margin-top:8px" onclick="fecharItem()">Fechar</button>';
+  var upd = function () {
+    var a = +$('bpAcerto').value || 1, e = +$('bpErro').value || -0.5;
+    $('bpLimiar').textContent = 'Limiar recalibrado: marcar só com p > ' + MotorCebraspe.fmtPct(MotorCebraspe.limiarDe(a, e), 2) + '.';
+  };
+  $('bpAcerto').addEventListener('input', upd); $('bpErro').addEventListener('input', upd); upd();
+  $('itemBack').classList.add('open');
+};
+window.rodarGap = async function () {
+  var micros = await Store.all('microconteudos');
+  var g = Seeds.gapAnalysis($('gapTxt').value, micros);
+  await Store.setSetting('gapAnalysis2027', { data: today(), marcas: g.marcas, removidos: g.removidos, dormentesAtivar: g.dormentesAtivar });
+  Cloud.schedulePush();
+  var cont = { IGUAL: 0, REFORMULADO: 0, NOVO: 0 };
+  g.marcas.forEach(function (m) { cont[m.tipo]++; });
+  window._gapAtivar = g.dormentesAtivar;
+  $('gapResult').innerHTML =
+    '<div class="badges"><span class="badge">IGUAL <b>' + cont.IGUAL + '</b></span>' +
+    '<span class="badge warn">REFORMULADO <b>' + cont.REFORMULADO + '</b></span>' +
+    '<span class="badge" style="background:var(--badl);border-color:transparent">NOVO <b>' + cont.NOVO + '</b></span>' +
+    '<span class="badge">REMOVIDO <b>' + g.removidos.length + '</b></span></div>' +
+    g.marcas.slice(0, 30).map(function (m) {
+      var cor = m.tipo === 'IGUAL' ? 'var(--ok)' : m.tipo === 'REFORMULADO' ? 'var(--warn)' : 'var(--bad)';
+      return '<div style="padding:3px 0;border-bottom:1px solid var(--line)"><b style="color:' + cor + '">' + m.tipo + '</b>' +
+        (m.match ? ' <span class="meta">→ ' + m.match + '</span>' : '') + '<br><small>' + esc(m.linha.slice(0, 90)) + '</small></div>';
+    }).join('') +
+    (g.marcas.length > 30 ? '<p class="empty">+' + (g.marcas.length - 30) + ' linhas (salvas no relatório)</p>' : '') +
+    (g.removidos.length ? '<p class="empty" style="margin-top:6px">Sem match no edital novo (candidatos a REMOVIDO): ' + g.removidos.slice(0, 12).join(', ') + (g.removidos.length > 12 ? '…' : '') + '</p>' : '') +
+    (g.dormentesAtivar.length ?
+      '<div style="margin-top:8px;background:var(--warnl);border-radius:9px;padding:8px">\u26A0 Gatilhos detectados: <b>' + g.dormentesAtivar.join(', ') + '</b><br>' +
+      '<button class="btn small" style="margin-top:6px" onclick="ativarDormentes()">Ativar ' + g.dormentesAtivar.length + ' dormentes</button></div>' : '<p class="empty" style="margin-top:6px">Nenhum gatilho de dormente detectado.</p>');
+};
+window.ativarDormentes = async function () {
+  var lista = window._gapAtivar || [];
+  for (var i = 0; i < lista.length; i++)
+    await Store.update('microconteudos', lista[i], { dormente: false, territorio: 'CONT' });
+  Cloud.schedulePush();
+  renderTerritorios(); renderProximo();
+  toast(lista.length + ' dormentes ativados (território CONT, fim da fila).');
+};
+window.ativarBlueprint2027 = async function () {
+  var pesos;
+  try { pesos = JSON.parse($('bpPesos').value); } catch (e) { toast('Pesos: JSON inválido.'); return; }
+  var soma = Object.values(pesos).reduce(function (s, v) { return s + (+v || 0); }, 0);
+  if (!(soma > 0)) { toast('Pesos precisam somar > 0.'); return; }
+  D.blueprint2027 = {
+    versao: '2027', totalItens: +$('bpItens').value || 120, duracaoMin: +$('bpDur').value || 210,
+    acerto: +$('bpAcerto').value || 1, erro: +$('bpErro').value || -0.5, branco: 0,
+    discursivas: { qtd: +$('bpDq').value || 2, pontos: +$('bpDp').value || 50, linhas: 80 },
+    pesos: pesos
+  };
+  D.blueprintAtivo = '2027';
+  save(); renderBlueprint(); fecharItem();
+  toast('BLUEPRINT_2027 ativo — limiar ' + limiarLabel() + '.');
+};
+window.voltarBlueprint2024 = function () { D.blueprintAtivo = '2024'; save(); renderBlueprint(); fecharItem(); toast('Blueprint 2024 reativado.'); };
+
+// ═══════════ FASE 12 — EXPORT 03 + ALLOWLIST ═══════════
+window.exportarMapa03 = async function () {
+  var micros = await Store.all('microconteudos');
+  var md = Seeds.gerarMapa03(micros, today());
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }));
+  a.download = '03-Mapa-Curricular.md'; a.click();
+  toast('03 regenerado — suba no Drive/Projeto do Claude.');
+};
+
 // ═══════════ FASE 10 — CHECKPOINTS (§10 + gatilho §9.4) ═══════════
 // Premissa: "N discursivas" conta REGISTROS (cada versão é uma prática).
 async function medidasAtuais() {
@@ -2077,7 +2299,7 @@ window.registrarSessao = async function () {
   var terr = $('sTerr').value, min = Math.max(5, Math.min(600, +$('sMin').value || 60));
   await Store.add('sessoes', { data: today(), territorio: terr, minutos: min });
   Cloud.schedulePush();
-  renderSessoesHoje(); renderHorizontes(); renderStats(); renderCheckpoints();
+  renderSessoesHoje(); renderHorizontes(); renderStats(); renderCheckpoints(); renderBlueprint(); renderAllowlist();
   toast('+' + min + 'min em ' + (TERR_LABEL[terr] || terr) + '.');
 };
 window.desfazerSessao = async function () {
@@ -2086,7 +2308,7 @@ window.desfazerSessao = async function () {
   var ult = ss.reduce(function (m, s) { return s.createdAt > m.createdAt ? s : m; });
   await Store.remove('sessoes', ult.id);
   Cloud.schedulePush();
-  renderSessoesHoje(); renderHorizontes(); renderStats(); renderCheckpoints();
+  renderSessoesHoje(); renderHorizontes(); renderStats(); renderCheckpoints(); renderBlueprint(); renderAllowlist();
   toast('Desfeito.');
 };
 async function renderSessoesHoje() {
@@ -2481,7 +2703,7 @@ window.executarImport = async function () {
 function renderAll() {
   renderHeader(); renderBadges(); renderMissao();
   renderProximo(); renderSemanaPlano(); renderTerritorios(); renderItens(); renderDiscursivas(); renderRevisoes();
-  renderSessoesHoje(); renderHorizontes(); renderStats(); renderCheckpoints();
+  renderSessoesHoje(); renderHorizontes(); renderStats(); renderCheckpoints(); renderBlueprint(); renderAllowlist();
   $('cfgProva').value = D.provaDate;
 }
 
@@ -2504,6 +2726,9 @@ function wireUI() {
   var selS = $('sTerr');
   FRENTES.forEach(function (f) { var o = document.createElement('option'); o.value = f; o.textContent = TERR_LABEL[f] || f; selS.appendChild(o); });
   $('btnSessao').addEventListener('click', function () { registrarSessao(); });
+  $('btnGap').addEventListener('click', function () { abrirGap(); });
+  $('btnMapa03').addEventListener('click', function () { exportarMapa03(); });
+  $('btnAllow').addEventListener('click', function () { Cloud.allowAdd($('allowEmail').value); });
   $('cfgTeto').addEventListener('change', function () {
     var v = Math.max(1, Math.min(30, +$('cfgTeto').value || 8));
     D.reviewBudget = v; save(); renderRevisoes(); toast('Teto: ' + v + '/dia.');
@@ -2542,6 +2767,10 @@ function wireUI() {
 }
 
 // ── boot em duas fases (padrão R+) ─────────────────────────────────────────
+window.addEventListener('error', function (ev) {
+  console.error('BCB Study:', ev.error || ev.message);
+  try { toast('\u26A0 Erro interno: ' + String(ev.message).slice(0, 80)); } catch (e) {}
+});
 (function boot() {
   applyTheme();
   wireUI();

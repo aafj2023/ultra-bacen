@@ -146,5 +146,41 @@ eq('dobra nunca < 1', S.intervaloComDobra(1, 'DIREITO'), 1);
   eq('5 agendadas', novas.length, 5);
 }
 
+// ═══ limiar genérico / gapAnalysis / gerarMapa03 (Fases 11-12) ═══
+const C2 = loadBlock('motor-cebraspe');
+eq('limiarDe Cebraspe = 1/3', C2.limiarDe(1, -0.5), 1 / 3);
+eq('limiarDe −1 = 50%', C2.limiarDe(1, -1), 0.5);
+eq('limiarDe sem penalidade = 0', C2.limiarDe(1, 0), 0);
+eq('corrigirItem custom score', C2.corrigirItem('E', 'C', 1, -1).score, -1);
+eq('corrigirItem default preservado', C2.corrigirItem('E', 'C').score, -0.5);
+{
+  const micros = S.buildMicros();
+  const texto = [
+    'Solow: estado estacionario, regra de ouro e convergencia',           // ≈ MAC-05 → IGUAL
+    'Modelos de crescimento com capital humano e progresso endogeno',     // parcial → REFORMULADO/NOVO
+    'Tributacao otima e federalismo fiscal em economias emergentes',      // NOVO + gatilho FP? (sem LRF/orçamento… 'federalismo' não é gatilho) 
+    'Lei 4.595 e a estrutura do Sistema Financeiro Nacional'              // NOVO p/ ativos + gatilho SFN
+  ].join('\n');
+  const g = S.gapAnalysis(texto, micros);
+  eq('4 linhas marcadas', g.marcas.length, 4);
+  eq('Solow = IGUAL', g.marcas[0].tipo === 'IGUAL' && g.marcas[0].match === 'MAC-05', true);
+  eq('linha inédita = NOVO', g.marcas[2].tipo, 'NOVO');
+  eq('gatilho SFN detectado', g.dormentesAtivar.includes('CONT-SFN-01'), true);
+  eq('gatilho FP NÃO detectado', g.dormentesAtivar.includes('CONT-FP-01'), false);
+  eq('removidos são só ativos sem match', g.removidos.includes('POR-02'), true);
+  eq('dormentes nunca em removidos', g.removidos.some(c => c.startsWith('CONT-')), false);
+}
+{
+  const micros = S.buildMicros();
+  micros.find(m => m.codigo === 'MAC-02').status = 'CONCLUIDO';
+  micros.find(m => m.codigo === 'MAC-02').driveUrl = 'https://drive/x';
+  const md = S.gerarMapa03(micros, '2026-07-16');
+  eq('mapa marca concluído', md.includes('- [x] **MAC-02**'), true);
+  eq('mapa tem link do Drive', md.includes('[📄 Drive](https://drive/x)'), true);
+  eq('mapa lista pendente', md.includes('- [ ] **MAC-01**'), true);
+  eq('mapa tem seção de dormentes', md.includes('## DORMENTES'), true);
+  eq('mapa tem os 11+CONT cabeçalhos ativos', md.includes('## PORTUGUES') && md.includes('## ATU'), true);
+}
+
 console.log(fails === 0 ? `✅ ${count}/${count} casos passaram` : `❌ ${fails}/${count} falharam`);
 process.exit(fails ? 1 : 0);
