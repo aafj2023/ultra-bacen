@@ -13,8 +13,9 @@ global.localStorage = {
   get length() { return Object.keys(mem).length; }
 };
 
-const Store = require('../js/store.js');
-const Seeds = require('../js/seeds.js');
+const { loadBlock } = require('./_extract.js');
+const Store = loadBlock('store');
+const Seeds = loadBlock('seeds');
 
 let fails = 0, count = 0;
 function eq(nome, got, want) {

@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Acesso master: este email sempre tem acesso.
+    // ATENÇÃO: duplicado em MASTER_EMAILS no index.html (bloco cloud) — mudar JUNTOS.
+    function isMaster() {
+      return request.auth != null
+        && request.auth.token.email in ['alvarofelisbertojr@gmail.com'];
+    }
+
+    // Autorizado = master OU está na allowlist com enabled == true
+    function isAllowed() {
+      return request.auth != null && (
+        isMaster()
+        || (
+          exists(/databases/$(database)/documents/allowed_users/$(request.auth.token.email))
+          && get(/databases/$(database)/documents/allowed_users/$(request.auth.token.email)).data.enabled == true
+        )
+      );
+    }
+
+    // Backup/sincronização: só o próprio dono e só se autorizado
+    match /backups/{uid} {
+      allow read, write: if isAllowed() && request.auth.uid == uid;
+    }
+
+    // Allowlist: cada pessoa lê só o próprio doc; só master gerencia
+    match /allowed_users/{email} {
+      allow read:  if request.auth != null && (request.auth.token.email == email || isMaster());
+      allow write: if isMaster();
+    }
+  }
+}

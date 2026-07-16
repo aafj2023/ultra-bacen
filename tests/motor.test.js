@@ -1,8 +1,9 @@
 // Bancada de testes da Fase 1 — Node puro, zero dependências.
 // Rodar: node tests/motor.test.js  (exit 1 se qualquer caso falhar)
 'use strict';
-const C = require('../js/motor-cebraspe.js');
-const R = require('../js/motor-ritmo.js');
+const { loadBlock } = require('./_extract.js');
+const C = loadBlock('motor-cebraspe');
+const R = loadBlock('motor-ritmo');
 
 let fails = 0, count = 0;
 function eq(nome, got, want) {

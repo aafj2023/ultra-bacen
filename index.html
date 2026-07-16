@@ -3,586 +3,1396 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ultra BACEN — Gestão da Aprovação</title>
-<meta name="description" content="Sistema inteligente de gestão da aprovação — concurso do Banco Central do Brasil.">
+<title>BCB Study</title>
+<meta name="description" content="BCB Study — painel de comando da preparação para Auditor do Banco Central (Economia e Finanças).">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<meta name="theme-color" content="#2a78d6">
+<meta name="theme-color" content="#123c6d">
+
+<script>
+// Config do Firebase (projeto próprio aprov-bacen — NÃO é o do R+).
+// Config web é público por design; a segurança vem das firestore.rules.
+window.BCB_FIREBASE = {
+  apiKey: "AIzaSyDXXbwnRD7zSEXstCEx5MxNhC_B_M__gMA",
+  authDomain: "aprov-bacen.firebaseapp.com",
+  projectId: "aprov-bacen",
+  storageBucket: "aprov-bacen.firebasestorage.app",
+  messagingSenderId: "591355440221",
+  appId: "1:591355440221:web:e80fa1fc30221ba615f1b4"
+};
+</script>
+
+<!-- CDNs pinados. SRI calculado do pacote npm real (jsDelivr serve os mesmos
+     bytes). Firebase via gstatic não oferece SRI estável — sem integrity,
+     como no R+. Ao mudar QUALQUER versão: atualizar aqui + PRECACHE do sw.js
+     + bump do CACHE ('bcb-vN'). -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/dexie@4.4.4/dist/dexie.min.js" integrity="sha384-Nxyqnmcibp3ktM/W06mzRDHx9uhqlYlf+Dd/cItNNr5LZnBWLvAsoJB2XQV6yg2a" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css" integrity="sha384-vlBdW0r3AcZO/HboRPznQNowvexd3fY8qHOWkBi5q7KGgqJ+F48+DceybYmrVbmB" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.js" integrity="sha384-AtrdNsnxl/75rvBneBVH7DtOvCxSVahR2zWqle1coBKd8DEmLoviqNeJSx64gNAs" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous"></script>
+
 <style>
+/* ── tokens (claro) + dark mode por data-theme e prefers-color-scheme ────── */
 :root{
-  --surface-1:#fcfcfb; --page:#f9f9f7;
-  --ink-1:#0b0b0b; --ink-2:#52514e; --ink-3:#898781;
-  --grid:#e1e0d9; --border:rgba(11,11,11,.10);
-  --s1:#2a78d6; --s2:#1baf7a;
-  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
-  --good-text:#006300;
+  --bg:#f4f6f9; --card:#ffffff; --ink:#14202e; --ink2:#4a5a6d; --ink3:#8494a7;
+  --line:#e2e8f0; --p:#1c5cab; --pd:#123c6d; --pl:#e3edf9;
+  --ok:#127a36; --okl:#e2f3e8; --warn:#8a5c00; --warnl:#fcf1d6;
+  --bad:#b3261e; --badl:#fae5e3; --navbg:rgba(255,255,255,.94);
+}
+html[data-theme=dark]{
+  --bg:#0e141b; --card:#18212c; --ink:#eef2f6; --ink2:#b7c2cf; --ink3:#7c8b9c;
+  --line:#28323f; --p:#5b96d8; --pd:#9cc0e8; --pl:#1b2c40;
+  --ok:#4fbf78; --okl:#14301f; --warn:#e0aa3e; --warnl:#33270d;
+  --bad:#e5726b; --badl:#3a1a17; --navbg:rgba(20,28,37,.94);
 }
 @media (prefers-color-scheme: dark){
-  :root{
-    --surface-1:#1a1a19; --page:#0d0d0d;
-    --ink-1:#ffffff; --ink-2:#c3c2b7; --ink-3:#898781;
-    --grid:#2c2c2a; --border:rgba(255,255,255,.10);
-    --s1:#3987e5; --s2:#199e70;
-    --good-text:#0ca30c;
+  html[data-theme=auto]{
+    --bg:#0e141b; --card:#18212c; --ink:#eef2f6; --ink2:#b7c2cf; --ink3:#7c8b9c;
+    --line:#28323f; --p:#5b96d8; --pd:#9cc0e8; --pl:#1b2c40;
+    --ok:#4fbf78; --okl:#14301f; --warn:#e0aa3e; --warnl:#33270d;
+    --bad:#e5726b; --badl:#3a1a17; --navbg:rgba(20,28,37,.94);
   }
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
-body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--page);color:var(--ink-1);line-height:1.45;padding-bottom:76px}
-header{padding:16px 16px 8px;display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:960px;margin:0 auto}
-header h1{font-size:1.15rem;font-weight:700}
-header .sub{font-size:.78rem;color:var(--ink-3)}
-.badge-pront{border:1px solid var(--border);background:var(--surface-1);border-radius:12px;padding:6px 12px;text-align:center;min-width:86px}
-.badge-pront .v{font-size:1.25rem;font-weight:700}
-.badge-pront .l{font-size:.65rem;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
-main{max-width:960px;margin:0 auto;padding:8px 16px 24px}
-section.tab{display:none}
-section.tab.active{display:block}
-.card{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin:12px 0}
-.card h2{font-size:.95rem;margin-bottom:10px}
-.card h2 .hint{font-weight:400;font-size:.75rem;color:var(--ink-3)}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
-.tile{background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:12px 14px}
-.tile .v{font-size:1.5rem;font-weight:700}
-.tile .l{font-size:.72rem;color:var(--ink-3)}
-.tile .d{font-size:.72rem;color:var(--ink-2);margin-top:2px}
-.chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:5px 11px;font-size:.78rem;background:var(--surface-1)}
-.dot{width:9px;height:9px;border-radius:50%;flex:none}
-ul.plain{list-style:none}
-ul.plain li{padding:8px 0;border-bottom:1px solid var(--grid);font-size:.85rem;display:flex;gap:8px;align-items:flex-start}
-ul.plain li:last-child{border-bottom:none}
-.tag{font-size:.65rem;font-weight:700;border-radius:6px;padding:2px 7px;flex:none;margin-top:1px;text-transform:uppercase;letter-spacing:.03em}
-.tag.crit{background:var(--crit);color:#fff}
-.tag.warn{background:var(--warn);color:#3b2b00}
-.tag.info{background:var(--s1);color:#fff}
-.tag.good{background:var(--good);color:#fff}
-.empty{color:var(--ink-3);font-size:.85rem;padding:6px 0}
-form .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
-form .row.single{grid-template-columns:1fr}
-label{font-size:.72rem;color:var(--ink-2);display:block;margin-bottom:3px}
-input,select,button{font:inherit;color:inherit}
-input,select{width:100%;background:var(--page);border:1px solid var(--border);border-radius:9px;padding:9px 10px}
-.btn{background:var(--s1);color:#fff;border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;width:100%}
-.btn.sec{background:transparent;color:var(--ink-1);border:1px solid var(--border)}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 10px;width:100%}
+a{color:var(--p)}
+
+/* ── shell ──────────────────────────────────────────────────────────────── */
+#app{display:none}
+.hdr{max-width:720px;margin:0 auto;padding:14px 16px 4px;display:flex;justify-content:space-between;align-items:center;gap:10px;position:relative}
+.hdr .t{font-size:1.05rem;font-weight:700}
+.hdr .sub{font-size:.74rem;color:var(--ink3)}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--pl);color:var(--p);font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--line);flex:none}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.menu{position:absolute;right:16px;top:52px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);min-width:220px;z-index:30;display:none;overflow:hidden}
+.menu.open{display:block}
+.menu .mi{display:block;width:100%;text-align:left;padding:11px 14px;font-size:.85rem;border-bottom:1px solid var(--line)}
+.menu .mi:last-child{border-bottom:none}
+.menu .mi small{display:block;color:var(--ink3)}
+.content{max-width:720px;margin:0 auto;padding:8px 16px 80px}
+.pane{display:none}.pane.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:12px 0}
+.card h2{font-size:.92rem;margin-bottom:8px}
+.card h2 .hint{font-weight:400;font-size:.74rem;color:var(--ink3)}
+.empty{color:var(--ink3);font-size:.85rem}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 2px}
+.badge{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:.78rem}
+.badge b{font-variant-numeric:tabular-nums}
+.badge.warn{background:var(--warnl);border-color:transparent}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:.75rem;background:var(--card)}
+.tag{font-size:.64rem;font-weight:700;border-radius:6px;padding:2px 7px;letter-spacing:.03em}
+.tag.max{background:var(--badl);color:var(--bad)} .tag.alta{background:var(--warnl);color:var(--warn)}
+.tag.media{background:var(--pl);color:var(--p)} .tag.hedge,.tag.f2,.tag.cont{background:var(--line);color:var(--ink2)}
+.rowline{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);font-size:.85rem}
+.rowline:last-child{border-bottom:none}
+.rowline .meta{font-size:.72rem;color:var(--ink3)}
+.btn{background:var(--p);color:#fff;border-radius:10px;padding:11px 16px;font-weight:600;width:100%;text-align:center}
+.btn.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
 .btn.small{width:auto;padding:7px 12px;font-size:.78rem}
-.btn.danger{background:var(--crit)}
-.rev-item{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--grid)}
-.rev-item:last-child{border-bottom:none}
-.rev-item .meta{font-size:.72rem;color:var(--ink-3)}
-.rev-actions{display:flex;gap:6px}
-.tablewrap{overflow-x:auto}
-table{border-collapse:collapse;width:100%;font-size:.78rem;min-width:760px}
-th{color:var(--ink-3);font-weight:600;text-align:left;padding:7px 8px;border-bottom:1px solid var(--grid);white-space:nowrap}
-td{padding:7px 8px;border-bottom:1px solid var(--grid);white-space:nowrap;font-variant-numeric:tabular-nums}
-tr:last-child td{border-bottom:none}
-.chartbox{height:230px;position:relative}
-nav{position:fixed;bottom:0;left:0;right:0;background:var(--surface-1);border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:10}
-nav button{background:none;border:none;color:var(--ink-3);font-size:.68rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 10px;border-radius:10px}
-nav button .ic{font-size:1.15rem}
-nav button.active{color:var(--s1);font-weight:700}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:88px;background:var(--ink-1);color:var(--page);border-radius:10px;padding:10px 16px;font-size:.82rem;opacity:0;transition:opacity .25s;pointer-events:none;z-index:20;max-width:90%}
+.btn.danger{background:var(--bad)}
+.mission li{list-style:none;display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:.86rem}
+.mission li:last-child{border-bottom:none}
+.mission .h{color:var(--ink3);font-variant-numeric:tabular-nums}
+.inviolavel{display:flex;gap:8px;margin-top:10px}
+.inviolavel .chip{background:var(--badl);border-color:transparent;color:var(--bad);font-weight:600}
+.prox{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.prox .cod{font-family:ui-monospace,monospace;font-weight:700;font-size:1.05rem}
+.local-banner{max-width:720px;margin:0 auto;padding:8px 16px 0}
+.local-banner .inner{background:var(--warnl);border-radius:10px;padding:8px 12px;font-size:.78rem}
+/* nav inferior */
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--navbg);backdrop-filter:blur(8px);border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:20}
+nav button{color:var(--ink3);font-size:.66rem;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 8px;border-radius:10px}
+nav button .ic{font-size:1.12rem}
+nav button.active{color:var(--p);font-weight:700}
+/* gate + onboarding */
+.full{position:fixed;inset:0;background:var(--bg);z-index:40;display:none;align-items:center;justify-content:center;padding:20px}
+.full.open{display:flex}
+.gatecard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px 24px;max-width:420px;width:100%;text-align:center}
+.gatecard .logo{font-size:2.2rem}
+.gatecard h1{font-size:1.2rem;margin:8px 0 4px}
+.gatecard p{font-size:.84rem;color:var(--ink2);margin-bottom:12px}
+.gatecard .msg{font-size:.78rem;color:var(--bad);margin-top:10px;min-height:1em}
+.ob-dots{display:flex;gap:6px;justify-content:center;margin:16px 0 4px}
+.ob-dots span{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.ob-dots span.on{background:var(--p)}
+.obcard{text-align:left}
+.obcard h1{text-align:center}
+.obcard ul{margin:8px 0 8px 18px;font-size:.85rem;color:var(--ink2)}
+.obcard li{margin:4px 0}
+.obcard label{font-size:.74rem;color:var(--ink2);display:block;margin:10px 0 4px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 16px;font-size:.82rem;opacity:0;transition:opacity .25s;pointer-events:none;z-index:50;max-width:92%}
 .toast.show{opacity:1}
-.note{font-size:.72rem;color:var(--ink-3);margin-top:8px}
+.skel{background:linear-gradient(90deg,var(--line),var(--bg),var(--line));background-size:200% 100%;animation:sk 1.2s infinite;border-radius:8px;height:16px}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
 </style>
 </head>
 <body>
-<header>
-  <div>
-    <h1>🏛️ Ultra BACEN</h1>
-    <div class="sub">Gestão da Aprovação · Auditor — Economia e Finanças</div>
-  </div>
-  <div class="badge-pront"><div class="v" id="pront">–</div><div class="l">Prontidão</div></div>
-</header>
 
-<main>
-<!-- ═══════════ INÍCIO ═══════════ -->
-<section class="tab active" id="tab-inicio">
-  <div class="tiles" id="tiles"></div>
+<!-- ═══ GATE (login) ═══ -->
+<div class="full" id="gate">
+  <div class="gatecard">
+    <div class="logo">🏛️</div>
+    <h1>BCB Study</h1>
+    <p>Painel de comando da preparação — Auditor BCB, Economia e Finanças. Acesso restrito.</p>
+    <button class="btn" id="btnLogin">Entrar com Google</button>
+    <div class="msg" id="gateMsg"></div>
+  </div>
+</div>
 
-  <div class="card">
-    <h2>🎯 Prioridades de hoje</h2>
-    <ul class="plain" id="prioridades"></ul>
-  </div>
+<!-- ═══ ONBOARDING ═══ -->
+<div class="full" id="ob">
+  <div class="gatecard obcard" id="obCard"></div>
+</div>
 
-  <div class="card">
-    <h2>⚙️ Motor de decisão <span class="hint">— regras SE/ENTÃO avaliadas agora</span></h2>
-    <ul class="plain" id="alertas"></ul>
-  </div>
-
-  <div class="card">
-    <h2>🚦 Semáforo das disciplinas</h2>
-    <div class="chips" id="semaforos"></div>
-  </div>
-
-  <div class="card">
-    <h2>Horas líquidas por semana</h2>
-    <div class="chartbox"><canvas id="chHoras"></canvas></div>
-  </div>
-
-  <div class="card">
-    <h2>Taxa líquida Cebraspe por semana <span class="hint">(certas − erradas) ÷ total</span></h2>
-    <div class="chartbox"><canvas id="chLiq"></canvas></div>
-  </div>
-</section>
-
-<!-- ═══════════ REGISTRAR ═══════════ -->
-<section class="tab" id="tab-registrar">
-  <div class="card">
-    <h2>➕ Registrar bloco de estudo <span class="hint">— ≤ 1 min; alimenta todo o sistema</span></h2>
-    <form id="formSessao">
-      <div class="row">
-        <div><label>Data</label><input type="date" id="fData" required></div>
-        <div><label>Período</label>
-          <select id="fPeriodo"><option value="manha">Manhã</option><option value="tarde">Tarde</option><option value="noite">Noite</option></select>
-        </div>
-      </div>
-      <div class="row">
-        <div><label>Disciplina</label><select id="fDisc" required></select></div>
-        <div><label>Tipo</label>
-          <select id="fTipo">
-            <option value="questoes">Questões</option>
-            <option value="teoria">Teoria (conteúdo novo)</option>
-            <option value="revisao">Revisão</option>
-            <option value="discursiva">Discursiva</option>
-            <option value="simulado">Simulado</option>
-          </select>
-        </div>
-      </div>
-      <div class="row">
-        <div><label>Minutos líquidos</label><input type="number" id="fMin" min="5" max="600" placeholder="50" required></div>
-        <div><label>Assunto <span id="assuntoHint">(teoria → entra no SRS)</span></label><input type="text" id="fAssunto" placeholder="ex.: Distribuições de prob."></div>
-      </div>
-      <div class="row" style="grid-template-columns:1fr 1fr 1fr">
-        <div><label>Questões: total</label><input type="number" id="fQt" min="0" placeholder="0"></div>
-        <div><label>Certas</label><input type="number" id="fQc" min="0" placeholder="0"></div>
-        <div><label>Erradas</label><input type="number" id="fQe" min="0" placeholder="0"></div>
-      </div>
-      <button class="btn" type="submit">Registrar</button>
-      <div class="note">Em certo/errado, itens em branco não são erradas: certas + erradas pode ser menor que o total.</div>
-    </form>
-  </div>
-  <div class="card">
-    <h2>Últimos registros</h2>
-    <ul class="plain" id="ultimas"></ul>
-  </div>
-</section>
-
-<!-- ═══════════ REVISÕES ═══════════ -->
-<section class="tab" id="tab-revisoes">
-  <div class="card">
-    <h2>🔁 Fila de hoje <span class="hint">— SRS 1·3·7·15·30·60·90·180 dias</span></h2>
-    <div id="filaHoje"></div>
-    <div class="note">Ao concluir, informe como foi o recall/questões: ≥70% avança o estágio; 50–69% repete; &lt;50% regride (intervalo encurta).</div>
-  </div>
-  <div class="card">
-    <h2>📅 Próximas (7 dias)</h2>
-    <div id="filaProx"></div>
-  </div>
-</section>
-
-<!-- ═══════════ DISCIPLINAS ═══════════ -->
-<section class="tab" id="tab-disciplinas">
-  <div class="card">
-    <h2>📚 Gestão das disciplinas <span class="hint">— ordenadas por ROI (prioridade dinâmica)</span></h2>
-    <div class="tablewrap"><table id="tblDisc"></table></div>
-    <div class="note">ROI = peso × incidência × (5 − domínio) ÷ dificuldade. Domínio é recalculado pela taxa líquida dos últimos 30 dias quando há ≥ 20 questões.</div>
-  </div>
-</section>
-
-<!-- ═══════════ CONFIG ═══════════ -->
-<section class="tab" id="tab-config">
-  <div class="card">
-    <h2>⚙️ Parâmetros</h2>
-    <form id="formCfg">
-      <div class="row">
-        <div><label>Meta de horas líquidas / semana</label><input type="number" id="cMeta" min="1" max="80"></div>
-        <div><label>Data estimada da prova</label><input type="date" id="cProva"></div>
-      </div>
-      <div class="row">
-        <div><label>Teto de revisões por dia</label><input type="number" id="cTeto" min="1" max="20"></div>
-        <div><label>Alvo de taxa líquida global (%)</label><input type="number" id="cAlvo" min="40" max="95"></div>
-      </div>
-      <button class="btn" type="submit">Salvar parâmetros</button>
-    </form>
-  </div>
-  <div class="card">
-    <h2>💾 Backup</h2>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn sec small" id="btnExport">Exportar dados (JSON)</button>
-      <label class="btn sec small" style="display:inline-flex;align-items:center;cursor:pointer">Importar<input type="file" id="fileImport" accept=".json" style="display:none"></label>
-      <button class="btn danger small" id="btnReset">Zerar tudo</button>
+<!-- ═══ APP ═══ -->
+<div id="localBanner" class="local-banner" style="display:none"><div class="inner">⚠ Modo local: nuvem indisponível nesta sessão. Dados ficam neste navegador — exporte backup em ☰ Mais → Plano.</div></div>
+<div id="app">
+  <div class="hdr">
+    <div><div class="t" id="hGreet">BCB Study</div><div class="sub" id="hSub"></div></div>
+    <button class="avatar" id="btnAvatar">A</button>
+    <div class="menu" id="menu">
+      <button class="mi" id="miTheme">Tema: <b id="miThemeV">auto</b><small>alternar auto → claro → escuro</small></button>
+      <div class="mi" id="miSync" style="cursor:default">Nuvem<small id="miSyncV">—</small></div>
+      <button class="mi" id="miLogout">Sair</button>
     </div>
-    <div class="note">Os dados vivem neste navegador (localStorage). Exporte semanalmente — o backup é seu seguro contra troca de aparelho.</div>
   </div>
-  <div class="card">
-    <h2>ℹ️ Sobre</h2>
-    <div class="note">Ultra BACEN v1 · PWA offline · Especificação completa em <code>mentor-bacen/sistema/</code> no repositório. Motor de decisão: 12 regras ativas (36 no manual). Métrica-mestra: taxa líquida Cebraspe.</div>
-  </div>
-</section>
-</main>
 
-<nav>
-  <button data-tab="inicio" class="active"><span class="ic">🏠</span>Início</button>
-  <button data-tab="registrar"><span class="ic">➕</span>Registrar</button>
-  <button data-tab="revisoes"><span class="ic">🔁</span>Revisões<span id="navRevBadge"></span></button>
-  <button data-tab="disciplinas"><span class="ic">📚</span>Disciplinas</button>
-  <button data-tab="config"><span class="ic">⚙️</span>Config</button>
-</nav>
+  <div class="content">
+    <!-- INÍCIO -->
+    <section class="pane active" id="pane-inicio">
+      <div class="badges" id="badges"></div>
+      <div class="card"><h2>Missão de hoje <span class="hint" id="mTitle"></span></h2>
+        <ul class="mission" id="missao"></ul>
+        <div class="inviolavel"><span class="chip">Anki diário</span><span class="chip">Discursiva de domingo</span></div>
+      </div>
+      <div class="card"><h2>Próximo arquivo <span class="hint">gerar no Prompt Mestre e salvar no Drive</span></h2>
+        <div id="proximo"><div class="skel"></div></div>
+      </div>
+      <div class="card"><h2>Semana no plano</h2><div id="semanaPlano" class="empty">Carregando…</div></div>
+    </section>
+
+    <!-- TERRITÓRIOS -->
+    <section class="pane" id="pane-terr">
+      <div class="card"><h2>Territórios <span class="hint">peso · cobertura · líquido</span></h2><div id="terrList"><div class="skel"></div></div></div>
+    </section>
+
+    <!-- ITENS -->
+    <section class="pane" id="pane-itens">
+      <div class="card"><h2>Itens Certo/Errado</h2>
+        <p class="empty">Chega na Fase 5: treino e revisão com trava de confiança 1–5, taxonomia de erros e fila de reteste. Fluxo: ler → declarar confiança → responder C/E/Branco → classificar erro.</p>
+      </div>
+    </section>
+
+    <!-- REVISÕES -->
+    <section class="pane" id="pane-rev">
+      <div class="card"><h2>Revisões (SRS)</h2>
+        <p class="empty">Chega na Fase 8: D+1 → D+7 → D+15 → D+30 + estágio react, teto diário, reconstrução retroativa e dobra de carga em Direito, Lógica, COSIF e Econometria.</p>
+      </div>
+    </section>
+
+    <!-- MAIS -->
+    <section class="pane" id="pane-mais">
+      <div class="card"><h2>Simulado</h2><p class="empty">Fase 6: 3h30 com hard stop, proporção real do blueprint, zero feedback durante, 100% offline.</p></div>
+      <div class="card"><h2>Discursivas</h2><p class="empty">Fase 7: editor com bloqueio em 80 linhas, autosave, versionamento imutável e grade de autoavaliação.</p></div>
+      <div class="card"><h2>Stats & Checkpoints</h2><p class="empty">Fases 9–10: líquido acumulado, calibração (Brier), mapa de erros, CP1–CP4 com gatilho de Econometria.</p></div>
+      <div class="card"><h2>⚙ Plano</h2>
+        <label style="font-size:.74rem;color:var(--ink2)">Data estimada da prova</label>
+        <input type="date" id="cfgProva" style="margin:4px 0 10px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn sec small" id="btnExport">Exportar backup</button>
+          <label class="btn sec small" style="display:inline-flex;cursor:pointer">Importar<input type="file" id="fileImport" accept=".json" style="display:none"></label>
+          <button class="btn danger small" id="btnReset">Zerar dados</button>
+        </div>
+        <p class="empty" style="margin-top:10px">Blueprint ativo: <b id="bpAtivo">2024</b> · 120 itens C/E · +1,00/−0,50 · limiar de marcação 33,33%. Gap analysis e allowlist chegam nas Fases 11–12.</p>
+      </div>
+    </section>
+  </div>
+
+  <nav>
+    <button data-tab="inicio" class="active"><span class="ic">🏠</span>Início</button>
+    <button data-tab="terr"><span class="ic">🗺️</span>Territórios</button>
+    <button data-tab="itens"><span class="ic">✅</span>Itens</button>
+    <button data-tab="rev"><span class="ic">🔁</span>Revisões</button>
+    <button data-tab="mais"><span class="ic">☰</span>Mais</button>
+  </nav>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
+/*<motor-cebraspe>*/
+// ═══════════════════════════════════════════════════════════════════════════
+// MOTOR CEBRASPE — funções puras (§5 da spec). Sem estado, sem DOM, sem I/O.
+// Regras NÃO negociáveis: +1,00 acerto · −0,50 erro · 0 branco · limiar p>1/3.
+// Precisão: nunca arredondar em cálculo interno; formatação só na UI (fmt4).
+// ═══════════════════════════════════════════════════════════════════════════
+(function (root) {
 'use strict';
-/* ═══════════════ DADOS ═══════════════ */
-const KEY = 'ultra-bacen-v1';
-const INTERVALOS = [1,3,7,15,30,60,90,180];
 
-const DISCIPLINAS = [
-  {id:'est',  nome:'Estatística/Econometria',   peso:5, incid:5, dif:4, dominio0:2,   metaHoras:120, alvo:65, prio:'MÁXIMA'},
-  {id:'cont', nome:'Contabilidade/COSIF',        peso:4, incid:4, dif:4, dominio0:1.5, metaHoras:100, alvo:70, prio:'MÁXIMA'},
-  {id:'disc', nome:'Discursiva/Redação',         peso:5, incid:5, dif:3, dominio0:1,   metaHoras:50,  alvo:70, prio:'MÁXIMA'},
-  {id:'eco',  nome:'Macro/Micro/Monetária',      peso:5, incid:5, dif:3, dominio0:3.5, metaHoras:110, alvo:70, prio:'ALTA'},
-  {id:'port', nome:'Português',                  peso:4, incid:5, dif:2, dominio0:3,   metaHoras:60,  alvo:80, prio:'ALTA'},
-  {id:'dir',  nome:'Direito Const./Adm.',        peso:3, incid:4, dif:2, dominio0:0.5, metaHoras:80,  alvo:70, prio:'MÉDIA'},
-  {id:'sfn',  nome:'SFN/Normativos',             peso:3, incid:4, dif:2, dominio0:3.5, metaHoras:40,  alvo:80, prio:'MÉDIA'},
-  {id:'fin',  nome:'Finanças/Ec.Int./Ec.Bras.',  peso:4, incid:4, dif:2, dominio0:4,   metaHoras:50,  alvo:75, prio:'MANUT.'},
-  {id:'ing',  nome:'Inglês/RLM',                 peso:2, incid:3, dif:2, dominio0:3,   metaHoras:30,  alvo:75, prio:'MANUT.'},
-];
+// ── §5.2 Limiar de marcação ─────────────────────────────────────────────────
+// EV(marcar) = p·1,00 + (1−p)·(−0,50) = 1,5p − 0,5  →  EV>0 ⟺ p>1/3.
+// 1/3 EXATO (a spec escreve 0.3333, mas §5.4 proíbe arredondar internamente;
+// 0.3333 < 1/3 marcaria itens com EV negativo). Exibição: LIMIAR_LABEL.
+var LIMIAR = 1 / 3;
+var LIMIAR_LABEL = '33,33%';
 
-let state = load();
-function load(){
-  try{
-    const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && s.config && Array.isArray(s.sessoes)) return s;
-  }catch(e){}
+// ── §5.1 Pontuação (score SEMPRE derivado) ──────────────────────────────────
+function corrigirItem(resposta, gabarito) {
+  if (resposta !== 'C' && resposta !== 'E' && resposta !== 'BRANCO')
+    throw new Error('resposta inválida: ' + resposta);
+  if (gabarito !== 'C' && gabarito !== 'E')
+    throw new Error('gabarito inválido: ' + gabarito);
+  if (resposta === 'BRANCO') return { correto: null, score: 0 };
+  var ok = resposta === gabarito;
+  return { correto: ok, score: ok ? 1.0 : -0.5 };
+}
+
+// ── §5.3 Percentual líquido — A métrica. Bruto é secundário. ────────────────
+function liquido(acertos, erros, total) {
+  if (!total || total <= 0) return null;
+  return (acertos - 0.5 * erros) / total;
+}
+function bruto(acertos, total) {
+  if (!total || total <= 0) return null;
+  return acertos / total;
+}
+
+// ── §5.2 EV e decisão de marcação ───────────────────────────────────────────
+function evMarcar(p) { return 1.5 * p - 0.5; }
+function deveMarcar(p) { return p > LIMIAR; }  // estrito: p=1/3 → EV=0 → branco
+
+// ── §5.5 Calibração ─────────────────────────────────────────────────────────
+var FAIXA_CONFIANCA = { 1: 0.20, 2: 0.40, 3: 0.60, 4: 0.80, 5: 0.95 };
+
+function erroCalibracaoItem(resposta, confianca) {
+  if (!(confianca >= 1 && confianca <= 5)) throw new Error('confiança inválida: ' + confianca);
+  var marcou = resposta !== 'BRANCO';
+  if (marcou && confianca <= 2) return 'MARCACAO_BAIXA_CONFIANCA';
+  if (!marcou && confianca >= 3) return 'ABSTENCAO_ALTA_CONFIANCA';
+  return null;
+}
+
+// Brier: média((p_declarada − acerto)²), acerto∈{0,1}. Só itens marcados.
+function brier(itens) {
+  var s = 0, n = 0;
+  for (var i = 0; i < itens.length; i++) {
+    var it = itens[i];
+    if (it.resposta === 'BRANCO' || it.correto === null || it.correto === undefined) continue;
+    var p = FAIXA_CONFIANCA[it.confianca];
+    if (p === undefined) throw new Error('confiança inválida: ' + it.confianca);
+    var a = it.correto ? 1 : 0;
+    s += (p - a) * (p - a); n++;
+  }
+  return n ? s / n : null;
+}
+
+// Diagnóstico por nível: superconfiante é o pecado caro (swing de 1,5/erro).
+function diagnosticoCalibracao(itens, tol) {
+  tol = (tol === undefined) ? 0.10 : tol;
+  var niveis = {}, c;
+  for (c = 1; c <= 5; c++) niveis[c] = { n: 0, acertos: 0 };
+  itens.forEach(function (it) {
+    if (it.resposta === 'BRANCO' || it.correto === null || it.correto === undefined) return;
+    niveis[it.confianca].n++;
+    if (it.correto) niveis[it.confianca].acertos++;
+  });
+  var pior = null;
+  for (c = 1; c <= 5; c++) {
+    var v = niveis[c];
+    v.esperado = FAIXA_CONFIANCA[c];
+    v.real = v.n ? v.acertos / v.n : null;
+    v.diag = v.real === null ? null
+      : v.real < v.esperado - tol ? 'superconfiante'
+      : v.real > v.esperado + tol ? 'subconfiante'
+      : 'calibrado';
+    if (v.diag && v.diag !== 'calibrado' && (!pior || v.n > pior.n)) pior = { n: v.n, diag: v.diag };
+  }
+  return { niveis: niveis, brier: brier(itens), diag: pior ? pior.diag : 'calibrado' };
+}
+
+// ── §5.6 Taxonomia de erros (enum FECHADO) ──────────────────────────────────
+var TIPOS_ERRO = {
+  NORMATIVO_DESATUALIZADO: 'Convicção em norma revogada',
+  VERDADE_ESTRANHA:        'Verdade contraintuitiva marcada como Errado',
+  CALCULO_SOB_PRESSAO:     'Execução numérica sob pressão',
+  CALIBRACAO:              'Marcação/abstenção fora do limiar',
+  FORMALISMO:              'Prática ≠ premissa formal do modelo',
+  LACUNA_CONTEUDO:         'Desconhecimento puro',
+  INTERPRETACAO:           'Leitura do enunciado'
+};
+function tipoErroValido(t) { return Object.prototype.hasOwnProperty.call(TIPOS_ERRO, t); }
+
+// ── Agregador de lote ───────────────────────────────────────────────────────
+function corrigirLote(itens) {
+  var acertos = 0, erros = 0, brancos = 0, escore = 0;
+  var corrigidos = itens.map(function (it) {
+    var r = corrigirItem(it.resposta, it.gabarito);
+    if (r.correto === true) acertos++;
+    else if (r.correto === false) erros++;
+    else brancos++;
+    escore += r.score;
+    var flag = (it.confianca !== undefined) ? erroCalibracaoItem(it.resposta, it.confianca) : null;
+    return { correto: r.correto, score: r.score, flagCalibracao: flag };
+  });
   return {
-    config:{metaHorasSemana:22, dataProva:'2027-05-15', tetoRevisoes:6, alvoGlobal:70},
-    sessoes:[], revisoes:[]
+    itens: corrigidos, total: itens.length,
+    acertos: acertos, erros: erros, brancos: brancos,
+    escore: escore,
+    liquido: liquido(acertos, erros, itens.length),
+    bruto: bruto(acertos, itens.length)
   };
 }
-function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
 
-/* ═══════════════ HELPERS ═══════════════ */
-const $ = (id)=>document.getElementById(id);
-const hoje = ()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
-const dt = (s)=>new Date(s+'T12:00:00');
-const addDias = (s,n)=>{ const d=dt(s); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
-const difDias = (a,b)=>Math.round((dt(a)-dt(b))/86400000);
-const fmtBR = (s)=>{ const [y,m,d]=s.split('-'); return d+'/'+m; };
-function segundaDe(s){ const d=dt(s); const wd=(d.getDay()+6)%7; d.setDate(d.getDate()-wd); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-const pct = (x)=> (x==null||isNaN(x)) ? '–' : Math.round(x)+'%';
-const discNome = (id)=> (DISCIPLINAS.find(d=>d.id===id)||{nome:id}).nome;
-function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2600); }
+// ── §5.4 Formatação (ÚNICO lugar onde se arredonda; 4 casas) ────────────────
+function fmt4(x) {
+  if (x === null || x === undefined || isNaN(x)) return '—';
+  return x.toFixed(4).replace('.', ',');
+}
+function fmtPct(x, casas) {
+  if (x === null || x === undefined || isNaN(x)) return '—';
+  return (x * 100).toFixed(casas === undefined ? 2 : casas).replace('.', ',') + '%';
+}
 
-/* ═══════════════ INDICADORES ═══════════════ */
-function sessDe(id, dias){ // dias=null → todas
-  const corte = dias ? addDias(hoje(), -dias) : null;
-  return state.sessoes.filter(s => (!id || s.disc===id) && (!corte || s.data>=corte));
-}
-function agregaQ(arr){
-  let t=0,c=0,e=0; arr.forEach(s=>{ t+=s.qt||0; c+=s.qc||0; e+=s.qe||0; });
-  return {t,c,e, liq: t? (c-e)/t*100 : null};
-}
-function minutos(arr){ return arr.reduce((a,s)=>a+(s.min||0),0); }
-function dominioAtual(d){
-  const a = agregaQ(sessDe(d.id,30));
-  if (a.t>=20 && a.liq!=null) return Math.max(0, Math.min(5, +(a.liq/20).toFixed(1)));
-  return d.dominio0;
-}
-function roi(d){ return +(d.peso*d.incid*(5-dominioAtual(d))/d.dif).toFixed(1); }
-function diasSemContato(d){
-  const ss = sessDe(d.id,null);
-  if (!ss.length) return null;
-  const ult = ss.reduce((m,s)=> s.data>m ? s.data : m, '0000');
-  return Math.max(0, difDias(hoje(), ult));
-}
-function semaforo(d){
-  const a30 = agregaQ(sessDe(d.id,30));
-  const dsc = diasSemContato(d);
-  if (a30.t < 10) return {cor:'var(--ink-3)', ic:'⚪', label:'SEM DADO', ord:2};
-  const liq = a30.liq;
-  if (liq < d.alvo-15 || (dsc!=null && dsc>=21)) return {cor:'var(--crit)', ic:'🔴', label:'CRÍTICO', ord:0};
-  if (liq >= d.alvo && (dsc==null || dsc<=7))    return {cor:'var(--good)', ic:'🟢', label:'ESTÁVEL', ord:3};
-  return {cor:'var(--warn)', ic:'🟡', label:'ATENÇÃO', ord:1};
-}
-function horasSemana(){
-  const seg = segundaDe(hoje());
-  return minutos(state.sessoes.filter(s=>s.data>=seg))/60;
-}
-function constancia7(){
-  const dias = new Set(sessDe(null,7).map(s=>s.data));
-  return dias.size;
-}
-function revisoesVencidas(){
-  return state.revisoes.filter(r=>r.ativo!==false && r.proxima<=hoje());
-}
-function prontidao(){
-  const hReal = minutos(state.sessoes)/60;
-  const hMeta = DISCIPLINAS.reduce((a,d)=>a+d.metaHoras,0);
-  const cobertura = Math.min(1, hReal/hMeta);
-  const g = agregaQ(sessDe(null,30));
-  const desempenho = g.liq==null ? 0 : Math.min(1, Math.max(0,g.liq)/state.config.alvoGlobal);
-  const consist = constancia7()/7;
-  const rev = Math.max(0, 1 - revisoesVencidas().length/10);
-  return Math.round(100*(0.3*cobertura + 0.4*desempenho + 0.2*consist + 0.1*rev));
-}
-function seriesSemanais(n){ // últimas n semanas: [{seg, horas, liq}]
-  const out=[];
-  let seg = segundaDe(hoje());
-  for(let i=0;i<n;i++){
-    const fim = addDias(seg,7);
-    const arr = state.sessoes.filter(s=>s.data>=seg && s.data<fim);
-    out.unshift({seg, horas:+(minutos(arr)/60).toFixed(1), liq: agregaQ(arr).liq});
-    seg = addDias(seg,-7);
-  }
+// ── §11 Blueprint da prova (VERSIONADO) ─────────────────────────────────────
+var BLUEPRINT_2024 = {
+  versao: '2024', totalItens: 120, duracaoMin: 210,
+  acerto: 1.0, erro: -0.5, branco: 0,
+  discursivas: { qtd: 2, pontos: 50, linhas: 80 },
+  pesos: { PORTUGUES: 25, MACRO: 18, FINANCAS: 18, ESTATISTICA_ECONOMETRIA: 12,
+           COSIF: 12, MICRO: 10, LOGICA_ESTAT: 10, FMM: 10, DIREITO: 5 }
+};
+
+// Composição por maior-resto (Hamilton): soma EXATAMENTE n.
+function composicaoSimulado(blueprint, n) {
+  var chaves = Object.keys(blueprint.pesos);
+  var somaPesos = chaves.reduce(function (s, k) { return s + blueprint.pesos[k]; }, 0);
+  var exatos = chaves.map(function (k) {
+    var e = n * blueprint.pesos[k] / somaPesos;
+    return { k: k, base: Math.floor(e), resto: e - Math.floor(e) };
+  });
+  var faltam = n - exatos.reduce(function (s, x) { return s + x.base; }, 0);
+  var porResto = exatos.slice().sort(function (a, b) { return b.resto - a.resto || a.k.localeCompare(b.k); });
+  var ganhaExtra = {};
+  porResto.forEach(function (x, i) { if (i < faltam) ganhaExtra[x.k] = true; });
+  var out = {}; // ordem das chaves = ordem do blueprint (determinística p/ UI)
+  exatos.forEach(function (x) { out[x.k] = x.base + (ganhaExtra[x.k] ? 1 : 0); });
   return out;
 }
 
-/* ═══════════════ MOTOR DE DECISÃO (12 regras ativas) ═══════════════ */
-function motor(){
-  const A=[]; const cfg=state.config;
-  const g30 = agregaQ(sessDe(null,30));
-  // R1 — disciplina com líquida muito abaixo do alvo
-  DISCIPLINAS.forEach(d=>{
-    const a=agregaQ(sessDe(d.id,30));
-    if (a.t>=20 && a.liq < d.alvo-15)
-      A.push({n:'crit', t:`${d.nome}: líquida ${pct(a.liq)} (alvo ${d.alvo}%) → aumente ~30% a carga e volte à teoria SÓ do pior assunto.`});
-  });
-  // R2 — fila de revisões estourada
-  const venc = revisoesVencidas().length;
-  if (venc > cfg.tetoRevisoes)
-    A.push({n:'crit', t:`${venc} revisões vencidas (teto ${cfg.tetoRevisoes}) → hoje é dia de ZERAR fila antes de conteúdo novo (risco de esquecimento composto).`});
-  // R3 — matéria prioritária abandonada
-  DISCIPLINAS.filter(d=>d.prio!=='MANUT.').forEach(d=>{
-    const n = diasSemContato(d);
-    if (n!=null && n>10) A.push({n:'warn', t:`${d.nome}: ${n} dias sem contato → agende 1 bloco nas próximas 48 h (Ebbinghaus não perdoa).`});
-  });
-  // R4 — ritmo de horas da semana
-  const wd=(new Date().getDay()+6)%7;
-  if (wd>=3 && horasSemana() < cfg.metaHorasSemana*((wd+1)/7)*0.8)
-    A.push({n:'warn', t:`Horas da semana em ${horasSemana().toFixed(1)}h — abaixo de 80% do ritmo para a meta de ${cfg.metaHorasSemana}h. Problema é rotina, não plano: proteja os blocos de amanhã.`});
-  // R5 — constância
-  if (state.sessoes.length && constancia7()<5)
-    A.push({n:'warn', t:`Constância ${constancia7()}/7 dias → hábito em risco. Regra mínima: 1 bloco de 25 min mesmo em dia ruim (não quebrar a corrente).`});
-  // R6 — estabilizada → manutenção
-  DISCIPLINAS.forEach(d=>{
-    const a=agregaQ(sessDe(d.id,21));
-    if (a.t>=60 && a.liq>=d.alvo && d.prio!=='MANUT.')
-      A.push({n:'info', t:`${d.nome} estável (líquida ${pct(a.liq)} há 3 semanas) → migre para manutenção: 1 bloco de questões a cada 10 dias e realoque as horas para a pior disciplina.`});
-  });
-  // R7 — excesso de teoria
-  const s14=sessDe(null,14);
-  const mt=minutos(s14.filter(s=>s.tipo==='teoria')), tot=minutos(s14);
-  if (tot>=300 && mt/tot>0.5)
-    A.push({n:'warn', t:`Teoria = ${Math.round(100*mt/tot)}% dos últimos 14 dias (limite 50%) → estudar ≠ ser aprovado; converta blocos em questões + recall.`});
-  // R8 — discursiva semanal
-  if (state.sessoes.length>=5 && !sessDe(null,7).some(s=>s.tipo==='discursiva'))
-    A.push({n:'warn', t:`Nenhuma discursiva em 7 dias → são 80 pontos da prova. Agende 1 para sábado (alternar P3 atualidades / P4 técnica).`});
-  // R9 — dose diária de Português
-  if (state.sessoes.length>=5 && !sessDe('port',3).length)
-    A.push({n:'info', t:`Português parado há 3+ dias → retome a dose diária de 20 questões (hábito-âncora).`});
-  // R10 — queda de desempenho global
-  const sem = seriesSemanais(2);
-  if (sem[0].liq!=null && sem[1].liq!=null && sem[1].liq < sem[0].liq-5)
-    A.push({n:'crit', t:`Líquida global caiu ${Math.round(sem[0].liq-sem[1].liq)} p.p. vs semana anterior → recalibrar: revisar error log e reduzir conteúdo novo por 1 semana.`});
-  // R11 — calibragem pendente
-  DISCIPLINAS.filter(d=>d.prio==='MÁXIMA' && d.id!=='disc').forEach(d=>{
-    if (agregaQ(sessDe(d.id,null)).t < 20)
-      A.push({n:'info', t:`${d.nome} sem bateria de calibragem (mín. 20 questões) → sem medir, o plano é chute.`});
-  });
-  // R12 — burn rate vs prova
-  const hRest = Math.max(0, DISCIPLINAS.reduce((a,d)=>a+d.metaHoras,0) - minutos(state.sessoes)/60);
-  const semRest = Math.max(1, difDias(cfg.dataProva, hoje())/7);
-  const rate = hRest/semRest;
-  if (state.sessoes.length && rate > cfg.metaHorasSemana*1.1)
-    A.push({n:'warn', t:`Ritmo necessário até a prova: ${rate.toFixed(1)} h/sem > sua meta de ${cfg.metaHorasSemana} h → corte escopo pelas prioridades (Pareto), não estique a jornada.`});
-  const ordem={crit:0,warn:1,info:2};
-  return A.sort((a,b)=>ordem[a.n]-ordem[b.n]);
-}
+var M = {
+  LIMIAR: LIMIAR, LIMIAR_LABEL: LIMIAR_LABEL, FAIXA_CONFIANCA: FAIXA_CONFIANCA,
+  TIPOS_ERRO: TIPOS_ERRO, BLUEPRINT_2024: BLUEPRINT_2024,
+  corrigirItem: corrigirItem, corrigirLote: corrigirLote,
+  liquido: liquido, bruto: bruto,
+  evMarcar: evMarcar, deveMarcar: deveMarcar,
+  erroCalibracaoItem: erroCalibracaoItem, brier: brier,
+  diagnosticoCalibracao: diagnosticoCalibracao, tipoErroValido: tipoErroValido,
+  fmt4: fmt4, fmtPct: fmtPct, composicaoSimulado: composicaoSimulado
+};
+if (typeof module !== 'undefined' && module.exports) module.exports = M;
+else root.MotorCebraspe = M;
+})(typeof self !== 'undefined' ? self : this);
+/*</motor-cebraspe>*/
 
-/* ═══════════════ RENDER ═══════════════ */
-function render(){
-  renderTiles(); renderPrioridades(); renderAlertas(); renderSemaforos();
-  renderUltimas(); renderRevisoes(); renderTabela(); renderCharts();
-  $('pront').textContent = state.sessoes.length ? prontidao() : '–';
-  const v = revisoesVencidas().length;
-  $('navRevBadge').textContent = v? ` (${v})` : '';
-}
-function renderTiles(){
-  const g30=agregaQ(sessDe(null,30));
-  const hs=horasSemana(), meta=state.config.metaHorasSemana;
-  const tiles=[
-    {v:hs.toFixed(1)+'h', l:'Horas na semana', d:'meta '+meta+'h ('+Math.round(100*hs/meta)+'%)'},
-    {v:pct(g30.liq), l:'Taxa líquida 30d', d:g30.t+' questões · alvo '+state.config.alvoGlobal+'%'},
-    {v:constancia7()+'/7', l:'Constância', d:'dias com estudo (últimos 7)'},
-    {v:String(revisoesVencidas().length), l:'Revisões pendentes', d:'teto diário '+state.config.tetoRevisoes},
-    {v:Math.max(0,difDias(state.config.dataProva,hoje()))+'d', l:'Até a prova (est.)', d:fmtBR(state.config.dataProva)+'/'+state.config.dataProva.slice(0,4)},
-  ];
-  $('tiles').innerHTML = tiles.map(t=>`<div class="tile"><div class="v">${t.v}</div><div class="l">${t.l}</div><div class="d">${t.d}</div></div>`).join('');
-}
-function renderPrioridades(){
-  const P=[];
-  const venc=revisoesVencidas();
-  if (venc.length) P.push({tag:'good', t:`Zerar ${Math.min(venc.length,state.config.tetoRevisoes)} revisões do SRS (${venc.slice(0,3).map(r=>r.assunto).join(', ')}${venc.length>3?'…':''}) — 12 min cada.`});
-  const rank=[...DISCIPLINAS].sort((a,b)=>roi(b)-roi(a)).slice(0,3);
-  P.push({tag:'good', t:`Blocos de maior ROI hoje: ${rank.map(d=>d.nome+' ('+roi(d)+')').join(' · ')} — o 1º no seu horário de pico.`});
-  if (!sessDe('port',1).length) P.push({tag:'good', t:'Dose diária: 20 questões de Português Cebraspe (hábito-âncora).'});
-  $('prioridades').innerHTML = P.map(p=>`<li><span class="tag ${p.tag}">FAZER</span><span>${p.t}</span></li>`).join('');
-}
-function renderAlertas(){
-  const A=motor();
-  $('alertas').innerHTML = A.length
-    ? A.map(a=>`<li><span class="tag ${a.n==='crit'?'crit':a.n==='warn'?'warn':'info'}">${a.n==='crit'?'Crítico':a.n==='warn'?'Atenção':'Info'}</span><span>${a.t}</span></li>`).join('')
-    : '<li class="empty">Nenhuma regra disparada — sistema estável. Siga o ciclo. ✅</li>';
-}
-function renderSemaforos(){
-  $('semaforos').innerHTML = [...DISCIPLINAS]
-    .map(d=>({d, s:semaforo(d)}))
-    .sort((a,b)=>a.s.ord-b.s.ord)
-    .map(({d,s})=>`<span class="chip"><span class="dot" style="background:${s.cor}"></span>${d.nome} <b style="color:var(--ink-3);font-weight:600">${s.label}</b></span>`).join('');
-}
-function renderUltimas(){
-  const u=[...state.sessoes].sort((a,b)=>b.id-a.id).slice(0,8);
-  $('ultimas').innerHTML = u.length
-    ? u.map(s=>{
-        const q=s.qt?` · ${s.qc}✓ ${s.qe}✗/${s.qt} (líq ${pct((s.qc-s.qe)/s.qt*100)})`:'';
-        return `<li><span class="tag info">${fmtBR(s.data)}</span><span>${discNome(s.disc)} — ${s.tipo}, ${s.min} min${s.assunto?' · '+s.assunto:''}${q} <button class="btn sec small" style="margin-left:6px" onclick="delSessao(${s.id})">✕</button></span></li>`;
-      }).join('')
-    : '<li class="empty">Nada registrado ainda. Comece pela bateria de calibragem: 20 questões por matéria.</li>';
-}
-function renderRevisoes(){
-  const h=hoje();
-  const venc = revisoesVencidas().sort((a,b)=> a.proxima<b.proxima?-1:1).slice(0, 50);
-  $('filaHoje').innerHTML = venc.length ? venc.map(r=>{
-    const atraso = difDias(h, r.proxima);
-    const risco = atraso>3 ? '🔴 risco alto' : atraso>0 ? '🟡 vencida' : '🟢 em dia';
-    return `<div class="rev-item"><div><b>${r.assunto}</b><div class="meta">${discNome(r.disc)} · estágio D+${INTERVALOS[r.estagio]} · ${risco}${atraso>0?' ('+atraso+'d atraso)':''}</div></div>
-      <div class="rev-actions">
-        <button class="btn small" onclick="concluirRev(${r.id},2)">≥70%</button>
-        <button class="btn sec small" onclick="concluirRev(${r.id},1)">50–69%</button>
-        <button class="btn sec small" onclick="concluirRev(${r.id},0)">&lt;50%</button>
-      </div></div>`;
-  }).join('') : '<div class="empty">Fila zerada. 🎉 Revisão em dia = retenção protegida.</div>';
-  const prox = state.revisoes.filter(r=>r.ativo!==false && r.proxima>h && r.proxima<=addDias(h,7)).sort((a,b)=>a.proxima<b.proxima?-1:1);
-  $('filaProx').innerHTML = prox.length
-    ? prox.map(r=>`<div class="rev-item"><div><b>${r.assunto}</b><div class="meta">${discNome(r.disc)} · ${fmtBR(r.proxima)} · D+${INTERVALOS[r.estagio]}</div></div></div>`).join('')
-    : '<div class="empty">Nenhuma revisão agendada para os próximos 7 dias.</div>';
-}
-function renderTabela(){
-  const rows=[...DISCIPLINAS].map(d=>{
-    const all=agregaQ(sessDe(d.id,null)), a30=agregaQ(sessDe(d.id,30));
-    const h=minutos(sessDe(d.id,null))/60, s=semaforo(d), dsc=diasSemContato(d);
-    return {d, all, a30, h, s, dsc, roi:roi(d), dom:dominioAtual(d)};
-  }).sort((a,b)=>b.roi-a.roi);
-  $('tblDisc').innerHTML = `<tr><th>Disciplina</th><th>Prior.</th><th>Horas</th><th>%</th><th>Questões</th><th>Líquida</th><th>Líq. 30d</th><th>Domínio</th><th>Sem contato</th><th>ROI</th><th>Status</th></tr>`
-    + rows.map(r=>`<tr><td>${r.d.nome}</td><td>${r.d.prio}</td><td>${r.h.toFixed(1)}/${r.d.metaHoras}h</td><td>${Math.round(100*r.h/r.d.metaHoras)}%</td><td>${r.all.t}</td><td>${pct(r.all.liq)}</td><td>${pct(r.a30.liq)}</td><td>${r.dom}/5</td><td>${r.dsc==null?'–':r.dsc+'d'}</td><td>${r.roi}</td><td>${r.s.ic} ${r.s.label}</td></tr>`).join('');
-}
+/*<motor-ritmo>*/
+// ═══════════════════════════════════════════════════════════════════════════
+// MOTOR DE RITMO — por território (§6). Funções puras. Núcleo pacing()
+// herdado do R+ (limiares NÃO negociáveis).
+// ═══════════════════════════════════════════════════════════════════════════
+(function (root) {
+'use strict';
 
-/* ═══════════════ GRÁFICOS ═══════════════ */
-let chH=null, chL=null;
-const cssv=(n)=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-function baseOpts(){
+function pacing(target, done, dElapsed, dTotal) {
+  if (!dTotal || dTotal <= 0) { dElapsed = 0; dTotal = 1; }
+  if (dElapsed < 0) dElapsed = 0;
+  if (dElapsed > dTotal) dElapsed = dTotal;
+  var expected = target * (dElapsed / dTotal);
+  var status =
+    (target > 0 && done >= target) ? 'done' :
+    (done > expected * 1.1)        ? 'ahead' :
+    (done >= expected * 0.9)       ? 'ontrack' : 'behind';
   return {
-    responsive:true, maintainAspectRatio:false,
-    plugins:{ legend:{labels:{color:cssv('--ink-2'), boxWidth:14, font:{size:11}}}, tooltip:{intersect:false, mode:'index'} },
-    scales:{
-      x:{ grid:{display:false}, ticks:{color:cssv('--ink-3'), font:{size:10}}, border:{color:cssv('--grid')} },
-      y:{ grid:{color:cssv('--grid')}, ticks:{color:cssv('--ink-3'), font:{size:10}}, border:{display:false}, beginAtZero:true }
-    }
+    target: target, done: done, expected: expected, status: status,
+    pct: target > 0 ? Math.min(100, done / target * 100) : 0,
+    expPct: target > 0 ? Math.min(100, expected / target * 100) : 0
   };
 }
-function renderCharts(){
-  if (typeof Chart==='undefined') return;
-  const sem=seriesSemanais(8);
-  const labels=sem.map(s=>fmtBR(s.seg));
-  if (chH) chH.destroy();
-  chH=new Chart($('chHoras'),{ type:'bar', data:{ labels, datasets:[
-    {label:'Horas', data:sem.map(s=>s.horas), backgroundColor:cssv('--s1'), borderRadius:4, maxBarThickness:34},
-    {label:'Meta', type:'line', data:sem.map(()=>state.config.metaHorasSemana), borderColor:cssv('--ink-3'), borderDash:[5,4], borderWidth:2, pointRadius:0}
-  ]}, options:baseOpts() });
-  if (chL) chL.destroy();
-  const o=baseOpts(); o.scales.y.suggestedMax=100;
-  chL=new Chart($('chLiq'),{ type:'line', data:{ labels, datasets:[
-    {label:'Taxa líquida (%)', data:sem.map(s=>s.liq==null?null:+s.liq.toFixed(1)), borderColor:cssv('--s2'), backgroundColor:cssv('--s2'), borderWidth:2, pointRadius:4, spanGaps:true},
-    {label:'Alvo', data:sem.map(()=>state.config.alvoGlobal), borderColor:cssv('--ink-3'), borderDash:[5,4], borderWidth:2, pointRadius:0}
-  ]}, options:o });
-}
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderCharts);
 
-/* ═══════════════ AÇÕES ═══════════════ */
-window.delSessao=(id)=>{ if(!confirm('Excluir este registro?'))return; state.sessoes=state.sessoes.filter(s=>s.id!==id); save(); render(); };
-window.concluirRev=(id,res)=>{
-  const r=state.revisoes.find(x=>x.id===id); if(!r) return;
-  if (res===2) r.estagio=Math.min(7, r.estagio+1);
-  else if (res===0) r.estagio=Math.max(0, r.estagio-1);
-  r.proxima=addDias(hoje(), INTERVALOS[r.estagio]);
-  save(); render();
-  toast(res===2?'Avançou para D+'+INTERVALOS[r.estagio]+' ✅':res===1?'Estágio mantido — reagendada.':'Regrediu — intervalo encurtado para consolidar.');
+// §6 Alvos da Fase 1 (h/semana; Σ=15h + ~1h folga = 16h disponíveis)
+var ALVO_F1 = { MACRO: 3.5, ECONOMETRIA: 2.5, FINANCAS: 2.5, COSIF: 2.0,
+                LOGICA: 1.5, DIREITO: 1.0, DISCURSIVA: 1.0, DRILL: 1.0 };
+
+// §6 Semana-tipo Fase 1 (0=Seg … 6=Dom)
+var SEMANA_TIPO_F1 = [
+  [{ t: 'MACRO', h: 2.0 }],
+  [{ t: 'ECONOMETRIA', h: 2.0 }],
+  [{ t: 'FINANCAS', h: 2.0 }],
+  [{ t: 'MACRO', h: 1.5 }, { t: 'ECONOMETRIA', h: 0.5 }],
+  [{ t: 'COSIF', h: 1.5 }, { t: 'LOGICA', h: 0.25 }, { t: 'DIREITO', h: 0.25 }],
+  [{ t: 'DRILL', h: 1.0 }, { t: 'COSIF', h: 1.0 }, { t: 'LOGICA', h: 1.0 }],
+  [{ t: 'DISCURSIVA', h: 1.0 }, { t: 'REVISAO_ANKI', h: 1.0 }, { t: 'QUESTOES', h: 1.0 }]
+];
+
+var INVIOLAVEIS = ['ANKI_DIARIO', 'DISCURSIVA_DOMINGO'];
+
+function pacingSemanaPorTerritorio(alvos, horasFeitas, diaIdx) {
+  var out = {};
+  Object.keys(alvos).forEach(function (t) {
+    out[t] = pacing(alvos[t], horasFeitas[t] || 0, diaIdx + 1, 7);
+  });
+  return out;
+}
+
+// donePct ponderado por peso (§6)
+function progressoPonderado(territorios) {
+  var num = 0, den = 0;
+  territorios.forEach(function (t) {
+    if (!t.total || t.total <= 0) return;
+    num += t.peso * (t.concluidos / t.total);
+    den += t.peso;
+  });
+  return den > 0 ? (num / den) * 100 : 0;
+}
+
+// behind se donePct < plannedPct − 5 (ahead espelhado a +5pp)
+function examPacing(donePct, semanasDecorridas, totalSemanas) {
+  totalSemanas = totalSemanas || 35;
+  var plannedPct = Math.min(100, (semanasDecorridas / totalSemanas) * 100);
+  var status = donePct < plannedPct - 5 ? 'behind'
+             : donePct > plannedPct + 5 ? 'ahead' : 'ontrack';
+  return { donePct: donePct, plannedPct: plannedPct, status: status,
+           gapPP: donePct - plannedPct };
+}
+
+// §10 Checkpoints (critérios em LÍQUIDO)
+var CHECKPOINTS = [
+  { id: 'CP1', semana: 10, criterios: { FINANCAS: 0.85, MACRO: 0.65, ECONOMETRIA: 0.60,
+      LOGICA: 0.70, COSIF: 0.60, ESTATISTICA: 0.80, DIREITO: 0.50 }, discursivasMin: 8 },
+  { id: 'CP2', semana: 16, liquidoGlobalMin: 0.65, itensMin: 100 },
+  { id: 'CP3', semana: 22, liquidoGlobalMin: 0.70, discursivasMin: 20, coberturaMin: 100 },
+  { id: 'CP4', semana: 31, liquidoGlobalMin: 0.75 }
+];
+
+function avaliaCheckpoint(cp, medidas) {
+  var pend = [];
+  if (cp.criterios) Object.keys(cp.criterios).forEach(function (t) {
+    var atual = medidas.liquidoPorTerritorio ? medidas.liquidoPorTerritorio[t] : null;
+    if (atual === null || atual === undefined)
+      pend.push(t + ': sem dado (mínimo ' + (cp.criterios[t] * 100) + '% líquido)');
+    else if (atual < cp.criterios[t])
+      pend.push(t + ': líquido ' + (atual * 100).toFixed(2) + '% < ' + (cp.criterios[t] * 100) + '%');
+  });
+  if (cp.liquidoGlobalMin !== undefined && !(medidas.liquidoGlobal >= cp.liquidoGlobalMin))
+    pend.push('líquido global ' + (medidas.liquidoGlobal != null ? (medidas.liquidoGlobal * 100).toFixed(2) + '%' : 'sem dado') + ' < ' + (cp.liquidoGlobalMin * 100) + '%');
+  if (cp.discursivasMin !== undefined && !(medidas.discursivas >= cp.discursivasMin))
+    pend.push('discursivas ' + (medidas.discursivas || 0) + ' < ' + cp.discursivasMin);
+  if (cp.itensMin !== undefined && !(medidas.itens >= cp.itensMin))
+    pend.push('itens ' + (medidas.itens || 0) + ' < ' + cp.itensMin);
+  if (cp.coberturaMin !== undefined && !(medidas.coberturaPct >= cp.coberturaMin))
+    pend.push('cobertura ' + (medidas.coberturaPct || 0) + '% < ' + cp.coberturaMin + '%');
+  return { aprovado: pend.length === 0, pendencias: pend };
+}
+
+// §9.4 gatilho automático
+function gatilhoReforcoEconometria(liquidoEconometria) {
+  if (liquidoEconometria === null || liquidoEconometria === undefined)
+    return { dispara: true, motivo: 'CP1 sem dado de Econometria — trate como reprovado no critério.' };
+  if (liquidoEconometria < 0.60)
+    return { dispara: true, motivo: 'Econometria ' + (liquidoEconometria * 100).toFixed(2) +
+             '% < 60% no CP1 → alocar 1 semana de reforço exclusivo (consome folga).' };
+  return { dispara: false, motivo: null };
+}
+
+var M = {
+  pacing: pacing, ALVO_F1: ALVO_F1, SEMANA_TIPO_F1: SEMANA_TIPO_F1,
+  INVIOLAVEIS: INVIOLAVEIS,
+  pacingSemanaPorTerritorio: pacingSemanaPorTerritorio,
+  progressoPonderado: progressoPonderado, examPacing: examPacing,
+  CHECKPOINTS: CHECKPOINTS, avaliaCheckpoint: avaliaCheckpoint,
+  gatilhoReforcoEconometria: gatilhoReforcoEconometria
+};
+if (typeof module !== 'undefined' && module.exports) module.exports = M;
+else root.MotorRitmo = M;
+})(typeof self !== 'undefined' ? self : this);
+/*</motor-ritmo>*/
+</script>
+<script>
+/*<store>*/
+// ═══════════════════════════════════════════════════════════════════════════
+// STORE — persistência dual (§7): Dexie/IndexedDB com fallback localStorage.
+// Prefixos: DB 'bcbDB' · localStorage 'bcb1_*' · NUNCA 'rplus*'.
+// ═══════════════════════════════════════════════════════════════════════════
+(function (root) {
+'use strict';
+
+var SK = 'bcb1';
+var SCHEMA = {
+  microconteudos: '&codigo, territorio, prioridade, status, ordem',
+  sessoes:        '++id, data, territorio, createdAt',
+  itens:          '++id, data, microcodigo, territorio, loteId, correto, tipoErro, createdAt',
+  lotes:          '++id, modo, data, createdAt',
+  discursivas:    '++id, data, versao, paiId, createdAt',
+  revisoes:       '++id, dueDate, status, territorio, stage, createdAt',
+  checkpoints:    '&id, semana',
+  cronograma:     '&semana',
+  settings:       '&key',
+  streaks:        '&key',
+  snapshots:      '++id, &weekKey'
+};
+var PK = {
+  microconteudos: 'codigo', checkpoints: 'id', cronograma: 'semana',
+  settings: 'key', streaks: 'key',
+  sessoes: 'id', itens: 'id', lotes: 'id', discursivas: 'id',
+  revisoes: 'id', snapshots: 'id'
+};
+var AUTO = { sessoes: 1, itens: 1, lotes: 1, discursivas: 1, revisoes: 1, snapshots: 1 };
+
+var Store = (function () {
+  var mode = null, db = null, ready = false;
+  var LSK = SK + '_store_';
+  var METAK = SK + '_store_meta';
+
+  function lsGet(t) { try { return JSON.parse(localStorage.getItem(LSK + t)) || []; } catch (e) { return []; } }
+  function lsSet(t, arr) { localStorage.setItem(LSK + t, JSON.stringify(arr)); }
+  function meta() { try { return JSON.parse(localStorage.getItem(METAK)) || {}; } catch (e) { return {}; } }
+  function setMeta(m) { localStorage.setItem(METAK, JSON.stringify(m)); }
+  function nextId(t) { var m = meta(); m['id_' + t] = (m['id_' + t] || 0) + 1; setMeta(m); return m['id_' + t]; }
+
+  async function init() {
+    if (typeof Dexie !== 'undefined' && typeof indexedDB !== 'undefined') {
+      try {
+        db = new Dexie('bcbDB');
+        db.version(1).stores(SCHEMA);
+        await db.open();
+        mode = 'idb';
+      } catch (e) { db = null; mode = 'ls'; }
+    } else { mode = 'ls'; }
+    ready = true;
+    return mode;
+  }
+
+  function stamp(rec) {
+    var now = Date.now();
+    if (!rec.createdAt) rec.createdAt = now;
+    rec.updatedAt = now;
+    return rec;
+  }
+
+  async function add(t, rec) {
+    rec = stamp(Object.assign({}, rec));
+    if (!AUTO[t] && (rec[PK[t]] === undefined || rec[PK[t]] === null))
+      throw new Error(t + ': chave "' + PK[t] + '" obrigatória');
+    if (mode === 'idb') { rec.id = AUTO[t] ? await db[t].add(rec) : (await db[t].add(rec), rec[PK[t]]); return rec; }
+    if (AUTO[t] && rec.id === undefined) rec.id = nextId(t);
+    var arr = lsGet(t);
+    if (!AUTO[t] && arr.some(function (r) { return r[PK[t]] === rec[PK[t]]; }))
+      throw new Error(t + ': chave duplicada ' + rec[PK[t]]);
+    arr.push(rec); lsSet(t, arr); return rec;
+  }
+
+  async function put(t, rec) {
+    var k = PK[t], key = rec[k];
+    if (key === undefined || key === null) return add(t, rec);
+    var atual = await get(t, key);
+    var novo = stamp(Object.assign({}, atual || {}, rec));
+    if (atual && atual.createdAt) novo.createdAt = atual.createdAt;
+    if (mode === 'idb') { await db[t].put(novo); return novo; }
+    var arr = lsGet(t), i = arr.findIndex(function (r) { return r[k] === key; });
+    if (i >= 0) arr[i] = novo; else arr.push(novo);
+    lsSet(t, arr); return novo;
+  }
+
+  async function get(t, key) {
+    if (mode === 'idb') return (await db[t].get(key)) || null;
+    var k = PK[t];
+    return lsGet(t).find(function (r) { return r[k] === key; }) || null;
+  }
+
+  async function all(t) {
+    if (mode === 'idb') return db[t].toArray();
+    return lsGet(t).slice();
+  }
+
+  async function update(t, key, patch) {
+    var atual = await get(t, key);
+    if (!atual) return null;
+    return put(t, Object.assign({}, atual, patch, (function () { var o = {}; o[PK[t]] = key; return o; })()));
+  }
+
+  async function remove(t, key) {
+    if (mode === 'idb') { await db[t].delete(key); return; }
+    var k = PK[t];
+    lsSet(t, lsGet(t).filter(function (r) { return r[k] !== key; }));
+  }
+
+  async function clear(t) {
+    if (mode === 'idb') { await db[t].clear(); return; }
+    lsSet(t, []);
+  }
+
+  async function setSetting(key, value) { return put('settings', { key: key, value: value }); }
+  async function getSetting(key) { var r = await get('settings', key); return r ? r.value : null; }
+
+  async function putSnapshot(weekKey, rec) {
+    var lista = await all('snapshots');
+    var ex = lista.find(function (s) { return s.weekKey === weekKey; });
+    if (ex) return update('snapshots', ex.id, Object.assign({}, rec, { weekKey: weekKey }));
+    return add('snapshots', Object.assign({}, rec, { weekKey: weekKey }));
+  }
+
+  var TABELAS = Object.keys(SCHEMA);
+  async function exportAll() {
+    var data = { meta: meta() };
+    for (var i = 0; i < TABELAS.length; i++) data[TABELAS[i]] = await all(TABELAS[i]);
+    return { app: 'bcb-study', version: 1, exportedAt: new Date().toISOString(), data: data };
+  }
+  async function importAll(bundle) {
+    if (!bundle || bundle.app !== 'bcb-study' || !bundle.data)
+      throw new Error('backup inválido: esperado app "bcb-study"');
+    for (var i = 0; i < TABELAS.length; i++) {
+      var t = TABELAS[i];
+      await clear(t);
+      var rows = bundle.data[t] || [];
+      for (var j = 0; j < rows.length; j++) {
+        if (mode === 'idb') await db[t].put(rows[j]);
+        else { var arr = lsGet(t); arr.push(rows[j]); lsSet(t, arr); }
+      }
+    }
+    if (mode === 'ls' && bundle.data.meta) setMeta(bundle.data.meta);
+    return true;
+  }
+
+  async function resetAll() {
+    if (mode === 'idb' && db) { db.close(); await Dexie.delete('bcbDB'); }
+    var apagar = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf(SK) === 0) apagar.push(k);
+    }
+    apagar.forEach(function (k) { localStorage.removeItem(k); });
+  }
+
+  return {
+    init: init, add: add, put: put, get: get, all: all, update: update,
+    remove: remove, clear: clear, setSetting: setSetting, getSetting: getSetting,
+    putSnapshot: putSnapshot, exportAll: exportAll, importAll: importAll,
+    resetAll: resetAll,
+    get mode() { return mode; }, get ready() { return ready; },
+    SCHEMA: SCHEMA, PK: PK, SK: SK
+  };
+})();
+
+if (typeof module !== 'undefined' && module.exports) module.exports = Store;
+else root.Store = Store;
+})(typeof self !== 'undefined' ? self : this);
+/*</store>*/
+</script>
+<script>
+/*<seeds>*/
+// ═══════════════════════════════════════════════════════════════════════════
+// SEEDS — dados canônicos do plano (§8 v4 · §9 v4 · §10). FONTE DE VERDADE
+// PEDAGÓGICA (§18): engenharia não altera estes dados.
+// ═══════════════════════════════════════════════════════════════════════════
+(function (root) {
+'use strict';
+
+var SEED_VERSION = 1;
+
+var NATUREZA = {
+  MACRO: 'RECONSTRUCAO', FINANCAS: 'BLINDAGEM', ECONOMETRIA: 'RECONSTRUCAO',
+  ESTATISTICA: 'MANUTENCAO', COSIF: 'RECONSTRUCAO', LOGICA: 'RECONSTRUCAO',
+  MICRO: 'MANUTENCAO', FMM: 'MANUTENCAO', PORTUGUES: 'MANUTENCAO',
+  DIREITO: 'HEDGE', ATU: 'RECONSTRUCAO'
+};
+var PRIORIDADE_ORDEM = ['MAX', 'ALTA', 'MEDIA', 'HEDGE', 'F2', 'CONT'];
+var STATUS = ['PENDENTE', 'GERADO', 'EM_ESTUDO', 'CONCLUIDO'];
+
+var LISTAS = {
+  MACRO: [
+    ['MAC-02', 'Fundação IS-LM/demanda agregada (base didática)', 'ed.1', 'MAX', 'M'],
+    ['MAC-01', 'Modelo clássico: neutralidade, dicotomia', 'ed.1', 'MAX', 'D'],
+    ['MAC-03', 'Novo-keynesiano: rigidez, IS dinâmica, Phillips NK, regra de juros', 'ed.1', 'MAX', 'MD'],
+    ['MAC-04', 'AS-AD: construção, choques, ajuste CP→LP', 'ed.1', 'ALTA', 'M'],
+    ['MAC-05', 'Solow: estado estacionário, regra de ouro, convergência', 'ed.1', 'MAX', 'D'],
+    ['MAC-06', 'Crescimento endógeno (AK, Romer, capital humano)', 'ed.1', 'MAX', 'D'],
+    ['MAC-07', 'Escolha intertemporal: consumo (Fisher, RPC, ciclo de vida), investimento', 'ed.1', 'MAX', 'D'],
+    ['MAC-08', 'Escolha intertemporal: governo, ricardiana, conta corrente', 'ed.1', 'MAX', 'D'],
+    ['MAC-15', 'Paridade coberta e descoberta (CIP/UIP)', 'ed.5', 'MAX', 'D'],
+    ['MAC-16', 'Câmbio, PPC, termos de troca; exportação/importação', 'ed.5', 'MAX', 'D'],
+    ['MAC-09', 'PM: regras × discricionariedade; credibilidade (Kydland-Prescott)', 'ed.2', 'ALTA', 'D'],
+    ['MAC-10', 'PM convencional: objetivos, instrumentos, operacionalidade', 'ed.2', 'MEDIA', 'M'],
+    ['MAC-11', 'PM não convencional: QE, forward guidance', 'ed.2', 'ALTA', 'D'],
+    ['MAC-12', 'Regime de metas (arranjo brasileiro, meta contínua)', 'ed.2', 'MEDIA', 'M'],
+    ['MAC-13', 'Política macroprudencial e estabilidade financeira', 'ed.3', 'ALTA', 'D'],
+    ['MAC-14', 'Política fiscal: déficit, dívida, sustentabilidade (r−g)', 'ed.4', 'ALTA', 'D'],
+    ['MAC-17', 'Curva de Phillips, expectativas racionais e inflação', 'ed.6', 'MEDIA', 'M'],
+    ['MAC-18', 'Ciclos econômicos reais (RBC)', 'ed.7', 'ALTA', 'D'],
+    ['MAC-19', 'Mercado de trabalho: NK × clássico, taxa natural', 'ed.8', 'MEDIA', 'M']
+  ],
+  FINANCAS: [
+    ['FIN-08', 'Teoria de carteiras: média-variância, fronteira, utilidade, ativo livre de risco', 'ed.3', 'MAX', 'D'],
+    ['FIN-09', 'CAPM e extensões (CML×SML, beta, multifatores)', 'ed.4.1', 'MAX', 'D'],
+    ['FIN-12', 'Renda fixa: apreçamento, duration e convexidade', 'ed.6', 'MAX', 'D'],
+    ['FIN-11', 'ETTJ: teorias, taxas à vista/a termo, movimentos', 'ed.5', 'MAX', 'D'],
+    ['FIN-14', 'Risco: volatilidade, VaR (premissas!), estresse', 'ed.8', 'MAX', 'D'],
+    ['FIN-05', 'Derivativos: futuros, termo, swaps, opções', 'ed.1.8', 'MAX', 'D'],
+    ['FIN-07', 'Eficiência de mercado: formas, propriedades, estratégias', 'ed.2', 'MAX', 'M'],
+    ['FIN-10', 'APT', 'ed.4.2', 'ALTA', 'D'],
+    ['FIN-01', 'Títulos do Tesouro (LTN, NTN-B/F, LFT)', 'ed.1.1', 'ALTA', 'M'],
+    ['FIN-02', 'Dívida privada e securitização', 'ed.1.2-3', 'ALTA', 'M'],
+    ['FIN-03', 'Compromissadas, depósito a prazo, DI', 'ed.1.4-5', 'ALTA', 'M'],
+    ['FIN-04', 'Ações e fundos (CVM 175)', 'ed.1.6-7', 'ALTA', 'M'],
+    ['FIN-06', 'Derivativos de crédito (CDS, TRS)', 'ed.1.9', 'ALTA', 'D'],
+    ['FIN-13', 'Riscos ESG', 'ed.7', 'MEDIA', 'F']
+  ],
+  ECONOMETRIA: [
+    ['EEC-05', 'Regressão simples e múltipla (MQO, hipóteses) — do zero na prática', 'ed.4', 'MAX', 'M'],
+    ['EEC-08', 'Violações: heterocedasticidade, autocorrelação, multicolinearidade, endogeneidade', 'ed.4', 'MAX', 'D'],
+    ['EEC-06', 'Séries temporais: estacionariedade, raiz unitária, VAR', 'ed.5', 'MAX', 'D'],
+    ['EEC-09', 'Cointegração e correção de erros (VEC)', 'ed.5', 'ALTA', 'D'],
+    ['EEC-07', 'Dados em painel: EF, EA, técnicas de identificação', 'ed.6', 'MAX', 'D'],
+    ['EEC-10', 'Interpretação de output econométrico (leitura de tabelas de regressão)', 'ed.3-6', 'MAX', 'M'],
+    ['EEC-02', 'LGN, TCL, processos estocásticos', 'ed.2,7', 'ALTA', 'D']
+  ],
+  ESTATISTICA: [
+    ['EST-06', 'Distribuições, esperança, momentos, esperança condicional', 'esp.1', 'MEDIA', 'M'],
+    ['EST-07', 'Inferência: estimação pontual/intervalar, propriedades', 'esp.3', 'MEDIA', 'M'],
+    ['EST-08', 'Testes de hipóteses e amostragem', 'esp.3', 'MEDIA', 'M'],
+    ['EST-04', 'Probabilidade condicional e independência (Bayes)', 'bas.2.5', 'MEDIA', 'M'],
+    ['EST-01', 'População, amostra, histogramas, frequências', 'bas.2.1-2', 'MEDIA', 'F'],
+    ['EST-02', 'Medidas de posição (média, moda, mediana, separatrizes)', 'bas.2.3', 'MEDIA', 'F'],
+    ['EST-03', 'Medidas de dispersão absoluta e relativa', 'bas.2.4', 'MEDIA', 'M'],
+    ['EST-05', 'Variável aleatória e funções de distribuição', 'bas.2.6', 'MEDIA', 'M']
+  ],
+  COSIF: [
+    ['COS-02', 'Instrumentos financeiros: classificação/mensuração (4.966: SPPI, VJR/VJORA/custo)', 'ed.2', 'ALTA', 'D'],
+    ['COS-04', 'Operações de crédito: perdas esperadas, estágios, write-off', 'ed.2.2', 'ALTA', 'D'],
+    ['COS-01', 'Princípios gerais, estrutura, escrituração', 'ed.1', 'ALTA', 'M'],
+    ['COS-03', 'Interfinanceiras, TVM e derivativos (registro)', 'ed.2.1', 'ALTA', 'D'],
+    ['COS-11', 'Conglomerado prudencial', 'ed.10', 'ALTA', 'D'],
+    ['COS-10', 'Demonstrações financeiras de divulgação das IFs', 'ed.9', 'ALTA', 'M'],
+    ['COS-15', 'Auditoria independente nas IFs', 'ed.14', 'ALTA', 'M'],
+    ['COS-08', 'Provisões, passivos e ativos contingentes', 'ed.7', 'MEDIA', 'M'],
+    ['COS-05', 'Investimentos mantidos para venda', 'ed.2.3', 'MEDIA', 'M'],
+    ['COS-06', 'Arrendamento mercantil', 'ed.3', 'MEDIA', 'M'],
+    ['COS-07', 'Não financeiros p/ venda; imobilizado; intangível', 'ed.4-6', 'MEDIA', 'M'],
+    ['COS-09', 'PL e remuneração do capital próprio (JCP)', 'ed.8', 'MEDIA', 'M'],
+    ['COS-12', 'Combinado cooperativo: balancete e auditoria', 'ed.11', 'MEDIA', 'D'],
+    ['COS-13', 'Grupos de consórcio', 'ed.12', 'MEDIA', 'M'],
+    ['COS-14', 'Liquidação extrajudicial', 'ed.13', 'MEDIA', 'M']
+  ],
+  LOGICA: [
+    ['LOG-02', 'Proposições, conectivos e tabelas-verdade', '1.3.1-2', 'ALTA', 'M'],
+    ['LOG-03', 'Equivalências e leis de Morgan; negações', '1.3.3-4', 'ALTA', 'M'],
+    ['LOG-01', 'Estruturas lógicas e argumentação', '1.1-2', 'ALTA', 'M'],
+    ['LOG-04', 'Problemas de lógica (verdade/mentira, associação)', '1.3.4', 'ALTA', 'M']
+  ],
+  MICRO: [
+    ['MIC-01', 'Teoria do consumidor (dualidade, Slutsky, demanda)', 'ed.1', 'MEDIA', 'D'],
+    ['MIC-02', 'Teoria da firma: produção, custos, oferta', 'ed.1', 'MEDIA', 'M'],
+    ['MIC-03', 'Estruturas de mercado e poder de mercado', 'ed.2', 'MEDIA', 'M'],
+    ['MIC-07', 'Informação assimétrica: seleção adversa, risco moral', 'ed.4', 'MEDIA', 'D'],
+    ['MIC-04', 'Concentração (HHI, CR) e organização industrial', 'ed.2', 'F2', 'D'],
+    ['MIC-05', 'Teoria dos jogos (Nash, dominância, repetidos)', 'ed.3', 'F2', 'D'],
+    ['MIC-06', 'Leilões (tipos, equivalência de receita, maldição do vencedor)', 'ed.3', 'F2', 'D'],
+    ['MIC-08', 'Externalidades e bens públicos (Pigou, Coase)', 'ed.4', 'F2', 'M'],
+    ['MIC-09', 'Equilíbrio geral: Walras, Pareto, teoremas do bem-estar', 'ed.5', 'F2', 'D'],
+    ['MIC-10', 'Bem-estar social (Arrow)', 'ed.6', 'F2', 'D'],
+    ['MIC-11', 'Economia comportamental', 'ed.7', 'F2', 'M']
+  ],
+  FMM: [
+    ['FMM-03', 'Multiplicador monetário; criação/destruição de moeda', 'M3', 'MEDIA', 'M'],
+    ['FMM-05', 'Balanço de pagamentos (BPM6)', 'M5', 'MEDIA', 'M'],
+    ['FMM-01', 'Contas nacionais e identidades', 'M1', 'MEDIA', 'M'],
+    ['FMM-02', 'Agregados monetários (M1-M4)', 'M2', 'MEDIA', 'F'],
+    ['FMM-04', 'Contas do sistema monetário', 'M4', 'MEDIA', 'M'],
+    ['FMM-07', 'Consumidor básico (indiferença, restrição, efeitos)', 'm2.1-4', 'MEDIA', 'M'],
+    ['FMM-08', 'Curva de demanda e elasticidades', 'm2.5-6', 'MEDIA', 'M'],
+    ['FMM-06', 'Organização econômica, custo de oportunidade, FPP', 'm1', 'MEDIA', 'F']
+  ],
+  PORTUGUES: [
+    ['POR-10', 'Reescrita e significação (equivalência semântica)', 'ed.6', 'MEDIA', 'D'],
+    ['POR-08', 'Concordância verbal e nominal', 'ed.5.5', 'MEDIA', 'M'],
+    ['POR-01', 'Compreensão e interpretação; gêneros', 'ed.1,2', 'MEDIA', 'M'],
+    ['POR-07', 'Pontuação', 'ed.5.4', 'MEDIA', 'M'],
+    ['POR-09', 'Regência, crase, colocação', 'ed.5.6-8', 'MEDIA', 'M'],
+    ['POR-06', 'Coordenação e subordinação', 'ed.5.2-3', 'MEDIA', 'M'],
+    ['POR-03', 'Coesão: referenciação, conectores', 'ed.4.1', 'MEDIA', 'M'],
+    ['POR-04', 'Tempos e modos verbais', 'ed.4.2', 'MEDIA', 'M'],
+    ['POR-05', 'Classes de palavras', 'ed.5.1', 'MEDIA', 'M'],
+    ['POR-02', 'Ortografia oficial', 'ed.3', 'MEDIA', 'F']
+  ],
+  DIREITO: [
+    ['DAD-06', 'Ato: conceito, requisitos, atributos, comunicação', '4.1-2', 'HEDGE', 'M'],
+    ['DAD-07', 'Anulação, revogação, convalidação; discricionariedade × vinculação', '4.3-4', 'HEDGE', 'M'],
+    ['DAD-02', 'Poderes; polícia; uso e abuso (Tema 532 STF)', 'ed.2', 'HEDGE', 'D'],
+    ['DAD-01', 'Princípios; direta e indireta; entidades (natureza do BCB)', 'ed.1,3', 'HEDGE', 'M'],
+    ['DAD-08', '8.112: provimento, vacância, direitos, disciplinar, PAD', 'ed.5', 'HEDGE', 'M'],
+    ['DAD-12', 'Improbidade (8.429 c/ 14.230)', 'ed.6', 'HEDGE', 'D'],
+    ['DAD-13', 'Ética: Dec. 1.171, Cód. Conduta, 12.813, LAI', 'ed.7-10', 'HEDGE', 'M'],
+    ['DAD-16', 'LGPD', 'ed.11', 'HEDGE', 'M']
+  ],
+  ATU: [
+    ['ATU-01', 'Dossiê: conjuntura monetária e inflação', '—', 'F2', 'M'],
+    ['ATU-02', 'Dossiê: estabilidade financeira e inovação BCB', '—', 'F2', 'M'],
+    ['ATU-03', 'Dossiê: temas transversais (clima, tecnologia, geopolítica)', '—', 'F2', 'M']
+  ]
 };
 
-$('formSessao').addEventListener('submit',(e)=>{
-  e.preventDefault();
-  const qt=+$('fQt').value||0, qc=+$('fQc').value||0, qe=+$('fQe').value||0;
-  if (qc+qe>qt){ toast('Certas + erradas não pode exceder o total.'); return; }
-  const s={ id:Date.now(), data:$('fData').value, disc:$('fDisc').value, tipo:$('fTipo').value,
-    min:+$('fMin').value, assunto:$('fAssunto').value.trim(), qt,qc,qe, periodo:$('fPeriodo').value };
-  state.sessoes.push(s);
-  let extra='';
-  if (s.tipo==='teoria' && s.assunto){
-    state.revisoes.push({id:Date.now()+1, disc:s.disc, assunto:s.assunto, dataAprend:s.data, estagio:0, proxima:addDias(s.data,1), ativo:true});
-    extra=' · revisão D+1 agendada 🔁';
-  }
-  save(); render();
-  $('formSessao').reset(); $('fData').value=hoje();
-  toast('Bloco registrado'+extra);
-});
+var DORMENTES = [
+  ['CONT-SFN-01', 'SFN institucional I: Lei 4.595 e estrutura do SFN', 'edital incluir SFN institucional'],
+  ['CONT-SFN-02', 'SFN institucional II: LC 179 (autonomia do BCB) e supervisores', 'edital incluir SFN institucional'],
+  ['CONT-SFN-03', 'SFN institucional III: Basileia autônoma', 'edital incluir SFN institucional'],
+  ['CONT-FP-01', 'Finanças públicas I: LRF', 'edital incluir finanças públicas'],
+  ['CONT-FP-02', 'Finanças públicas II: orçamento na CF (arts. 165-169), PPA/LDO/LOA', 'edital incluir finanças públicas'],
+  ['CONT-FP-03', 'Finanças públicas III: tributação e federalismo', 'edital incluir finanças públicas'],
+  ['CONT-DC-01', 'Direito Constitucional autônomo', 'edital incluir Direito Constitucional'],
+  ['CONT-DF-01', 'Direito Financeiro autônomo (Lei 4.320)', 'edital incluir Direito Financeiro']
+];
 
-$('formCfg').addEventListener('submit',(e)=>{
-  e.preventDefault();
-  state.config.metaHorasSemana=+$('cMeta').value||22;
-  state.config.dataProva=$('cProva').value||state.config.dataProva;
-  state.config.tetoRevisoes=+$('cTeto').value||6;
-  state.config.alvoGlobal=+$('cAlvo').value||70;
-  save(); render(); toast('Parâmetros salvos.');
-});
-$('btnExport').addEventListener('click',()=>{
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,1)],{type:'application/json'}));
-  a.download='ultra-bacen-backup-'+hoje()+'.json'; a.click();
-});
-$('fileImport').addEventListener('change',(e)=>{
-  const f=e.target.files[0]; if(!f) return;
-  f.text().then(txt=>{
-    const s=JSON.parse(txt);
-    if(!s.config||!Array.isArray(s.sessoes)) throw 0;
-    state=s; save(); render(); initForms(); toast('Backup importado ✅');
-  }).catch(()=>toast('Arquivo inválido.'));
-  e.target.value='';
-});
-$('btnReset').addEventListener('click',()=>{
-  if(!confirm('Zerar TODOS os dados? Exporte um backup antes.')) return;
-  localStorage.removeItem(KEY); state=load(); save(); render(); initForms(); toast('Sistema zerado.');
-});
-
-/* nav */
-document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
-  document.querySelectorAll('section.tab').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active'); $('tab-'+b.dataset.tab).classList.add('active');
-  if (b.dataset.tab==='inicio') renderCharts();
-}));
-
-/* ═══════════════ INIT ═══════════════ */
-function initForms(){
-  $('fDisc').innerHTML=DISCIPLINAS.map(d=>`<option value="${d.id}">${d.nome}</option>`).join('');
-  $('fData').value=hoje();
-  $('cMeta').value=state.config.metaHorasSemana; $('cProva').value=state.config.dataProva;
-  $('cTeto').value=state.config.tetoRevisoes; $('cAlvo').value=state.config.alvoGlobal;
+function buildMicros() {
+  var out = [], ordem = 0;
+  Object.keys(LISTAS).forEach(function (terr) {
+    LISTAS[terr].forEach(function (l) {
+      ordem++;
+      out.push({
+        codigo: l[0], nome: l[1], territorio: terr, itemEdital: l[2],
+        prioridade: l[3], dificuldade: l[4], natureza: NATUREZA[terr],
+        status: 'PENDENTE', ordem: ordem, prereqs: [], sucessores: [],
+        driveUrl: null, dormente: false, gatilho: null, geradoEm: null
+      });
+    });
+  });
+  DORMENTES.forEach(function (d) {
+    ordem++;
+    out.push({
+      codigo: d[0], nome: d[1], territorio: null, itemEdital: null,
+      prioridade: 'CONT', dificuldade: null, natureza: null,
+      status: 'PENDENTE', ordem: ordem, prereqs: [], sucessores: [],
+      driveUrl: null, dormente: true, gatilho: d[2], geradoEm: null
+    });
+  });
+  return out;
 }
-initForms(); render();
-if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+function buildCronograma() {
+  var F1 = [
+    { s: 1, MACRO: ['MAC-02'], ECONOMETRIA: ['EEC-05'], FINANCAS: ['FIN-08'], COSIF: ['COS-01'], LOGICA: ['LOG-02'], DIREITO: [], disc: null },
+    { s: 2, MACRO: ['MAC-01'], ECONOMETRIA: ['EEC-08'], FINANCAS: ['FIN-09'], COSIF: ['COS-02'], LOGICA: ['LOG-03'], DIREITO: ['DAD-06'], disc: null },
+    { s: 3, MACRO: ['MAC-03'], ECONOMETRIA: ['EEC-10'], FINANCAS: ['FIN-12'], COSIF: ['COS-04'], LOGICA: ['LOG-01'], DIREITO: [], disc: 'D1: PM/metas' },
+    { s: 4, MACRO: ['MAC-04'], ECONOMETRIA: ['EEC-06'], FINANCAS: ['FIN-11'], COSIF: ['COS-03'], LOGICA: ['LOG-04'], DIREITO: ['DAD-07'], disc: 'D2: choque de oferta' },
+    { s: 5, MACRO: ['MAC-05'], ECONOMETRIA: ['EEC-09'], FINANCAS: ['FIN-05'], COSIF: ['COS-11'], LOGICA: ['EST-04'], DIREITO: [], disc: 'D3: câmbio/paridades' },
+    { s: 6, MACRO: ['MAC-15'], ECONOMETRIA: ['EEC-07'], FINANCAS: ['FIN-14'], COSIF: ['COS-10'], LOGICA: [], DIREITO: ['DAD-02'], disc: 'D4: dívida (r−g)', nota: 'Revisão LOG' },
+    { s: 7, MACRO: ['MAC-16'], ECONOMETRIA: ['EEC-02'], FINANCAS: ['FIN-07'], COSIF: ['COS-15'], LOGICA: ['EST-02', 'EST-03'], DIREITO: [], disc: 'D5: crescimento' },
+    { s: 8, MACRO: ['MAC-06', 'MAC-07'], ECONOMETRIA: [], FINANCAS: ['FIN-01', 'FIN-02'], COSIF: ['COS-05', 'COS-06'], LOGICA: ['EST-05'], DIREITO: ['DAD-01'], disc: 'D6: escolha intertemporal', nota: 'Revisão econometria + questões' },
+    { s: 9, MACRO: ['MAC-08', 'MAC-18'], ECONOMETRIA: [], FINANCAS: ['FIN-03', 'FIN-04'], COSIF: ['COS-07', 'COS-08', 'COS-09'], LOGICA: [], DIREITO: ['DAD-08'], disc: 'D7: estabilidade financeira', nota: 'Simulado econometria · bateria lógica' },
+    { s: 10, MACRO: [], ECONOMETRIA: [], FINANCAS: ['FIN-06', 'FIN-10', 'FIN-13'], COSIF: ['COS-12', 'COS-13', 'COS-14'], LOGICA: [], DIREITO: ['DAD-12', 'DAD-13'], disc: 'D8: COSIF/crédito', nota: 'Revisão + simulado · reteste pontos fracos', checkpoint: 'CP1' }
+  ];
+  var CICLOS = [
+    { id: 'C1', semanas: [11, 12], foco: 'Econometria aprofundamento (raiz unitária avançada, cointegração aplicada, painel dinâmico, diagnóstico) + FIN cobertura formal', codigos: [] },
+    { id: 'C2', semanas: [13, 14], foco: 'Macro: bloco de política', codigos: ['MAC-09', 'MAC-10', 'MAC-11', 'MAC-12', 'MAC-13', 'MAC-14', 'MAC-17', 'MAC-19'] },
+    { id: 'C3', semanas: [15, 16], foco: 'Finanças formal completa (instrumentos, ESG) + estatística revisão', codigos: [], checkpoint: 'CP2' },
+    { id: 'C4', semanas: [17, 18], foco: 'COSIF extensão pendente + Micro núcleo', codigos: ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-07'] },
+    { id: 'C5', semanas: [19, 20], foco: 'Micro Fase 2 (jogos, leilões, eq. geral, bem-estar, comportamental) + FMM', codigos: ['MIC-04', 'MIC-05', 'MIC-06', 'MIC-08', 'MIC-09', 'MIC-10', 'MIC-11', 'FMM-01', 'FMM-02', 'FMM-03', 'FMM-04', 'FMM-05', 'FMM-06', 'FMM-07', 'FMM-08'] },
+    { id: 'C6', semanas: [21, 22], foco: 'Português (bateria) + Lógica avançada + ATU', codigos: ['ATU-01', 'ATU-02', 'ATU-03'], checkpoint: 'CP3' }
+  ];
+  var out = [];
+  F1.forEach(function (w) {
+    out.push({
+      semana: w.s, fase: 1,
+      plano: { MACRO: w.MACRO, ECONOMETRIA: w.ECONOMETRIA, FINANCAS: w.FINANCAS, COSIF: w.COSIF, LOGICA: w.LOGICA, DIREITO: w.DIREITO },
+      discursiva: w.disc, nota: w.nota || null, checkpoint: w.checkpoint || null
+    });
+  });
+  CICLOS.forEach(function (c) {
+    c.semanas.forEach(function (s, i) {
+      out.push({
+        semana: s, fase: 2, ciclo: c.id, foco: c.foco,
+        codigos: i === 0 ? c.codigos : [],
+        discursiva: 'discursiva semanal', nota: null,
+        checkpoint: (i === c.semanas.length - 1 && c.checkpoint) ? c.checkpoint : null
+      });
+    });
+  });
+  out.push({ semana: 23, fase: 3, foco: 'Gap analysis edital Auditor; ativar contingência; recalibrar', discursiva: 'discursiva semanal', checkpoint: null });
+  for (var s = 24; s <= 30; s++)
+    out.push({ semana: s, fase: 3, foco: 'Simulado completo semanal + análise de erros; discursiva às cegas; revisão espaçada', discursiva: 'discursiva às cegas', checkpoint: null });
+  out.push({ semana: 31, fase: 3, foco: 'Só revisão, questões, descanso', discursiva: null, checkpoint: 'CP4' });
+  out.push({ semana: 32, fase: 3, foco: 'Só revisão, questões, descanso', discursiva: null, checkpoint: null });
+  for (s = 33; s <= 35; s++)
+    out.push({ semana: s, fase: 3, foco: 'Buffer (§9.4): folga p/ reforço de Econometria, contingência do edital ou semanas perdidas', discursiva: null, checkpoint: null });
+  return out;
+}
+
+var SEED_CHECKPOINTS = [
+  { id: 'CP0', semana: 1, dataAprox: 'jul/26', descricao: 'Cobertura de Finanças/COSIF/Econometria confirmada no curso' },
+  { id: 'CP1', semana: 10, dataAprox: 'set/26', criterios: { FINANCAS: 0.85, MACRO: 0.65, ECONOMETRIA: 0.60, LOGICA: 0.70, COSIF: 0.60, ESTATISTICA: 0.80, DIREITO: 0.50 }, discursivasMin: 8 },
+  { id: 'CP2', semana: 16, dataAprox: 'nov/26', liquidoGlobalMin: 0.65, itensMin: 100, descricao: '100 itens em proporção real do blueprint' },
+  { id: 'CP3', semana: 22, dataAprox: 'dez/26', liquidoGlobalMin: 0.70, discursivasMin: 20, coberturaMin: 100 },
+  { id: 'GAP', semana: null, dataAprox: 'até 03/01/27', descricao: 'Gap analysis do edital Auditor em 7 dias' },
+  { id: 'CP4', semana: 31, dataAprox: 'fev-mar/27', liquidoGlobalMin: 0.75, descricao: 'Simulado completo' }
+];
+
+function proximoArquivo(micros) {
+  var fila = micros.filter(function (m) { return !m.dormente && m.status === 'PENDENTE'; });
+  fila.sort(function (a, b) {
+    var pa = PRIORIDADE_ORDEM.indexOf(a.prioridade), pb = PRIORIDADE_ORDEM.indexOf(b.prioridade);
+    return pa - pb || a.ordem - b.ordem;
+  });
+  return fila.length ? fila[0] : null;
+}
+
+async function seedAll(Store) {
+  var micros = buildMicros();
+
+  var ativos = micros.filter(function (m) { return !m.dormente; }).length;
+  var dorm = micros.filter(function (m) { return m.dormente; }).length;
+  console.assert(ativos === 107, 'volumetria: esperados 107 ativos, há ' + ativos);
+  console.assert(dorm === 8, 'volumetria: esperados 8 dormentes, há ' + dorm);
+  var porTerr = { MACRO: 19, FINANCAS: 14, ECONOMETRIA: 7, ESTATISTICA: 8, COSIF: 15, LOGICA: 4, MICRO: 11, FMM: 8, PORTUGUES: 10, DIREITO: 8, ATU: 3 };
+  Object.keys(porTerr).forEach(function (t) {
+    var n = micros.filter(function (m) { return m.territorio === t; }).length;
+    console.assert(n === porTerr[t], 'volumetria ' + t + ': esperado ' + porTerr[t] + ', há ' + n);
+  });
+  if (ativos !== 107 || dorm !== 8) throw new Error('volumetria do seed inválida');
+
+  var existentes = {};
+  (await Store.all('microconteudos')).forEach(function (m) { existentes[m.codigo] = m; });
+  for (var i = 0; i < micros.length; i++) {
+    var m = micros[i], ex = existentes[m.codigo];
+    if (ex) {
+      m = Object.assign({}, m, { status: ex.status, driveUrl: ex.driveUrl, geradoEm: ex.geradoEm, dormente: ex.dormente });
+    }
+    await Store.put('microconteudos', m);
+  }
+
+  var cron = buildCronograma();
+  console.assert(cron.length === 35, 'cronograma: esperadas 35 semanas, há ' + cron.length);
+  for (i = 0; i < cron.length; i++) await Store.put('cronograma', cron[i]);
+  for (i = 0; i < SEED_CHECKPOINTS.length; i++) await Store.put('checkpoints', SEED_CHECKPOINTS[i]);
+
+  await Store.setSetting('seedVersion', SEED_VERSION);
+  return { ativos: ativos, dormentes: dorm, semanas: cron.length, checkpoints: SEED_CHECKPOINTS.length };
+}
+
+var M = {
+  SEED_VERSION: SEED_VERSION, PRIORIDADE_ORDEM: PRIORIDADE_ORDEM, STATUS: STATUS,
+  NATUREZA: NATUREZA, buildMicros: buildMicros, buildCronograma: buildCronograma,
+  SEED_CHECKPOINTS: SEED_CHECKPOINTS, proximoArquivo: proximoArquivo, seedAll: seedAll
+};
+if (typeof module !== 'undefined' && module.exports) module.exports = M;
+else root.Seeds = M;
+})(typeof self !== 'undefined' ? self : this);
+/*</seeds>*/
+</script>
+<script>
+/*<cloud>*/
+// ═══════════════════════════════════════════════════════════════════════════
+// CLOUD — Firebase (padrão do R+, ver docs/ARQUITETURA-HERDADA.md §1.6).
+// Doc único backups/{uid} · allowlist · last-writer-wins · pull no login.
+// Degradação graciosa: sem firebase carregado, Cloud.enabled=false e o app
+// roda 100% local. Melhoria sobre o R+: flush do push em visibilitychange.
+// ═══════════════════════════════════════════════════════════════════════════
+var Cloud = (function () {
+'use strict';
+var CFG = (typeof window !== 'undefined') ? window.BCB_FIREBASE : null;
+var MASTER_EMAILS = ['alvarofelisbertojr@gmail.com']; // duplicado em firestore.rules — mudar JUNTOS
+var LSS = 'bcb1_cloud_sync', LSU = 'bcb1_cloud_uid', LSA = 'bcb1_access';
+var enabled = !!(CFG && typeof firebase !== 'undefined');
+var auth = null, db = null, user = null, allowed = false, pushTimer = null, lastErr = null;
+
+function init() {
+  if (!enabled) return false;
+  try {
+    firebase.initializeApp(CFG);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    auth.onAuthStateChanged(onAuth);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden' && pushTimer) { clearTimeout(pushTimer); pushTimer = null; push(); }
+    });
+    return true;
+  } catch (e) { enabled = false; lastErr = e; return false; }
+}
+
+function isMaster(email) { return MASTER_EMAILS.indexOf((email || '').toLowerCase()) >= 0; }
+
+async function checkAccess(u) {
+  if (isMaster(u.email)) return true;
+  try {
+    var doc = await db.collection('allowed_users').doc((u.email || '').toLowerCase()).get();
+    return !!(doc.exists && doc.data().enabled === true);
+  } catch (e) {
+    // offline/erro: graça se este uid já foi autorizado neste aparelho
+    return localStorage.getItem(LSA) === u.uid;
+  }
+}
+
+async function onAuth(u) {
+  user = u;
+  if (!u) { if (typeof showGate === 'function') showGate(); return; }
+  allowed = await checkAccess(u);
+  if (!allowed) {
+    if (typeof gateBlocked === 'function') gateBlocked(u.email);
+    return;
+  }
+  localStorage.setItem(LSA, u.uid);
+  if (localStorage.getItem(LSU) !== u.uid) { localStorage.removeItem(LSS); localStorage.setItem(LSU, u.uid); }
+  await pullOrPush();
+  if (typeof enterApp === 'function') enterApp(u);
+}
+
+function signIn() {
+  if (!enabled) return;
+  auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(function (e) {
+    lastErr = e;
+    var el = document.getElementById('gateMsg');
+    if (el) el.textContent = 'Falha no login: ' + (e && e.message || e);
+  });
+}
+function signOut() { if (enabled && auth) auth.signOut(); }
+
+async function pullOrPush() {
+  try {
+    var ref = db.collection('backups').doc(user.uid);
+    var snap = await ref.get();
+    var lastSync = +localStorage.getItem(LSS) || 0;
+    if (snap.exists && (snap.data().updatedAt || 0) > lastSync) await applyRemote(snap.data());
+    else schedulePush(0);
+  } catch (e) { lastErr = e; }
+}
+
+async function applyRemote(docData) {
+  var bundle = docData.data;
+  if (!bundle) return;
+  try {
+    await Store.importAll(bundle);
+    if (bundle.data && bundle.data.appState && typeof applyAppState === 'function')
+      applyAppState(bundle.data.appState);
+    localStorage.setItem(LSS, String(docData.updatedAt || Date.now()));
+    if (typeof renderAll === 'function') renderAll();
+  } catch (e) { lastErr = e; }
+}
+
+async function push() {
+  if (!enabled || !user || !allowed) return;
+  try {
+    var bundle = await Store.exportAll();
+    bundle.data.appState = (typeof D !== 'undefined') ? D : null; // FORÇADO após exportAll (padrão R+)
+    var updatedAt = Date.now();
+    await db.collection('backups').doc(user.uid).set({ data: bundle, updatedAt: updatedAt, email: user.email });
+    localStorage.setItem(LSS, String(updatedAt));
+    if (typeof renderSyncStatus === 'function') renderSyncStatus();
+  } catch (e) { lastErr = e; }
+}
+
+function schedulePush(delay) {
+  if (!enabled || !user || !allowed) return;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(function () { pushTimer = null; push(); }, delay === undefined ? 1500 : delay);
+}
+
+function status() {
+  if (!enabled) return 'modo local (nuvem indisponível)';
+  if (!user) return 'desconectado';
+  var t = +localStorage.getItem(LSS) || 0;
+  return user.email + (t ? ' · sync ' + new Date(t).toLocaleTimeString('pt-BR').slice(0, 5) : ' · sem sync');
+}
+
+return { init: init, signIn: signIn, signOut: signOut, schedulePush: schedulePush,
+         push: push, isMaster: isMaster, status: status,
+         get enabled() { return enabled; }, get user() { return user; }, get allowed() { return allowed; } };
+})();
+/*</cloud>*/
+
+/*<app>*/
+// ═══════════════════════════════════════════════════════════════════════════
+// APP — estado, boot em duas fases, gate, onboarding, navegação, telas F3.
+// Datas de calendário: SEMPRE strings locais 'YYYY-MM-DD' (parseYMD) —
+// nunca new Date('YYYY-MM-DD') nem toISOString (gotcha #1 do mapa herdado).
+// ═══════════════════════════════════════════════════════════════════════════
+'use strict';
+var SK = 'bcb1';
+
+// ── fundação temporal (padrão R+, tudo LOCAL) ───────────────────────────────
+function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function parseYMD(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2], 12, 0, 0); }
+function today() { return ymd(new Date()); }
+function monday(d) { var x = new Date(d); var wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); return x; }
+function mondayStr() { return ymd(monday(new Date())); }
+function daysTo(s) { return Math.ceil((parseYMD(s) - parseYMD(today())) / 86400000); }
+
+// ── estado D ────────────────────────────────────────────────────────────────
+function def() {
+  return { done: false, userName: '', provaDate: '2027-03-15', editalDate: '2027-01-03',
+           firstWeek: null, weekStart: null, theme: 'auto', totalSemanas: 35, reviewBudget: 8 };
+}
+var D = def();
+try { D = Object.assign(def(), JSON.parse(localStorage.getItem(SK)) || {}); } catch (e) {}
+function save() {
+  localStorage.setItem(SK, JSON.stringify(D));
+  try { if (Store.ready) Store.setSetting('appState', D); } catch (e) {}
+  try { Cloud.schedulePush(); } catch (e) {}
+}
+function applyAppState(remoto) { D = Object.assign(def(), remoto || {}); localStorage.setItem(SK, JSON.stringify(D)); applyTheme(); }
+
+// ── tema ────────────────────────────────────────────────────────────────────
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', D.theme || 'auto');
+  var el = document.getElementById('miThemeV'); if (el) el.textContent = D.theme;
+}
+function cycleTheme() {
+  D.theme = D.theme === 'auto' ? 'light' : D.theme === 'light' ? 'dark' : 'auto';
+  save(); applyTheme();
+}
+
+// ── helpers de UI ───────────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function toast(msg) { var t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('show'); }, 2600); }
+
+var TERR_META = [ // rótulos + peso de PROGRESSO (§3; blueprint §11 manda na prova)
+  { id: 'PORTUGUES', nome: 'Português', peso: 25 },
+  { id: 'MACRO', nome: 'Macroeconomia', peso: 18 },
+  { id: 'FINANCAS', nome: 'Finanças', peso: 18 },
+  { id: 'COSIF', nome: 'COSIF', peso: 12 },
+  { id: 'MICRO', nome: 'Microeconomia', peso: 10 },
+  { id: 'FMM', nome: 'Fund. Micro/Macro', peso: 10 },
+  { id: 'ECONOMETRIA', nome: 'Econometria', peso: 9 },
+  { id: 'LOGICA', nome: 'Lógica', peso: 7 },
+  { id: 'ESTATISTICA', nome: 'Estatística de base', peso: 5 },
+  { id: 'DIREITO', nome: 'Direito Administrativo', peso: 5 },
+  { id: 'ATU', nome: 'Atualidades (dossiês)', peso: 0 }
+];
+var TERR_LABEL = {};
+TERR_META.forEach(function (t) { TERR_LABEL[t.id] = t.nome; });
+TERR_LABEL.DRILL = 'Drill numérico'; TERR_LABEL.DISCURSIVA = 'Discursiva';
+TERR_LABEL.REVISAO_ANKI = 'Revisão + Anki'; TERR_LABEL.QUESTOES = 'Questões mistas';
+
+function semanaAtual() {
+  if (!D.firstWeek) return 1;
+  var dif = Math.round((parseYMD(mondayStr()) - parseYMD(D.firstWeek)) / 86400000);
+  return Math.max(1, Math.min(D.totalSemanas, Math.floor(dif / 7) + 1));
+}
+
+// ── gate / fluxo de entrada ─────────────────────────────────────────────────
+function showGate() { $('gate').classList.add('open'); $('ob').classList.remove('open'); $('app').style.display = 'none'; }
+function gateBlocked(email) {
+  showGate();
+  $('gateMsg').textContent = 'Acesso não liberado para ' + email + '. Peça inclusão na allowlist.';
+}
+function enterApp() { $('gate').classList.remove('open'); route(); }
+function route() {
+  if (!D.done) { showOnboarding(); return; }
+  $('ob').classList.remove('open');
+  $('app').style.display = 'block';
+  renderAll();
+}
+
+// ── onboarding (tom: adulto técnico; §13) ───────────────────────────────────
+var obIdx = 0;
+var OB = [
+  function () {
+    return '<div class="logo" style="text-align:center">🏛️</div><h1>BCB Study</h1>' +
+      '<p style="text-align:center">Painel de comando da preparação para <b>Auditor do BCB — Economia e Finanças</b>. Registra, mede, projeta, cobra. As aulas nascem fora (Prompt Mestre → Drive); aqui vive o controle.</p>';
+  },
+  function () {
+    return '<h1>Datas</h1><p>Edital previsto: <b>03/01/2027</b> (fixo — dispara o gap analysis). Prova estimada:</p>' +
+      '<label>Data estimada da prova (ajustável depois em ⚙ Plano)</label>' +
+      '<input type="date" id="obProva" value="' + esc(D.provaDate) + '">';
+  },
+  function () {
+    return '<h1>O contrato</h1><ul>' +
+      '<li><b>16 h/semana</b>: 2 h/noite útil + 3 h/dia no fim de semana.</li>' +
+      '<li>Semana-tipo fixa na Fase 1 (Macro seg · Econometria ter · Finanças qua…).</li>' +
+      '<li><b>Invioláveis</b>: Anki diário e discursiva de domingo — mesmo em semana perdida.</li>' +
+      '<li>Métrica-mestra: <b>líquido</b> = acertos − 0,5·erros. Marcar só com p &gt; 33,33%.</li></ul>';
+  },
+  function () {
+    return '<h1>Pronto</h1><p>O plano tem 35 semanas, 107 microconteúdos e 4 checkpoints com critérios numéricos. A semana 1 começa na segunda-feira desta semana. Primeiro arquivo da fila: <b>MAC-02</b>.</p>';
+  }
+];
+function showOnboarding() { $('app').style.display = 'none'; $('ob').classList.add('open'); obIdx = 0; obRender(); }
+function obRender() {
+  var dots = OB.map(function (_, i) { return '<span class="' + (i === obIdx ? 'on' : '') + '"></span>'; }).join('');
+  $('obCard').innerHTML = OB[obIdx]() +
+    '<div class="ob-dots">' + dots + '</div>' +
+    '<button class="btn" id="obNext" style="margin-top:10px">' + (obIdx === OB.length - 1 ? 'Começar' : 'Avançar') + '</button>';
+  $('obNext').onclick = obNext;
+}
+function obNext() {
+  var dt = $('obProva'); if (dt && dt.value) D.provaDate = dt.value;
+  if (obIdx < OB.length - 1) { obIdx++; obRender(); return; }
+  D.done = true;
+  if (!D.firstWeek) D.firstWeek = mondayStr();
+  D.weekStart = mondayStr();
+  if (Cloud.user && Cloud.user.displayName && !D.userName) D.userName = Cloud.user.displayName.split(' ')[0];
+  save(); route();
+}
+
+// ── navegação ───────────────────────────────────────────────────────────────
+function goTab(tab) {
+  document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+  document.querySelectorAll('.pane').forEach(function (p) { p.classList.toggle('active', p.id === 'pane-' + tab); });
+}
+
+// ── renders da Fase 3 ───────────────────────────────────────────────────────
+function greet() {
+  var h = new Date().getHours();
+  var s = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+  return s + (D.userName ? ', ' + D.userName : '');
+}
+function renderHeader() {
+  $('hGreet').textContent = greet();
+  var sem = semanaAtual();
+  $('hSub').textContent = 'Semana ' + sem + '/' + D.totalSemanas + ' · Fase ' + (sem <= 10 ? 1 : sem <= 22 ? 2 : 3);
+  var u = Cloud.user;
+  var av = $('btnAvatar');
+  if (u && u.photoURL) av.innerHTML = '<img src="' + esc(u.photoURL) + '" alt="">';
+  else av.textContent = (D.userName || 'A').slice(0, 1).toUpperCase();
+  $('miSyncV').textContent = Cloud.status();
+}
+function renderBadges() {
+  var dE = daysTo(D.editalDate), dP = daysTo(D.provaDate);
+  $('badges').innerHTML =
+    '<span class="badge' + (dE <= 60 ? ' warn' : '') + '">Edital em <b>' + dE + 'd</b> (03/01/27)</span>' +
+    '<span class="badge">Prova est. em <b>' + dP + 'd</b></span>' +
+    '<span class="badge">Líquido acumulado: <b>—</b> <small>(Fase 5)</small></span>';
+}
+function renderMissao() {
+  var dow = (new Date().getDay() + 6) % 7;
+  var DIA = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'];
+  $('mTitle').textContent = '· semana-tipo Fase 1, ' + DIA[dow];
+  var blocos = MotorRitmo.SEMANA_TIPO_F1[dow];
+  function fmtH(h) {
+    var horas = Math.floor(h), min = Math.round((h - horas) * 60);
+    return (horas ? horas + 'h' : '') + (min ? (horas ? '' : '0h') + String(min).padStart(2, '0') : (horas ? '' : '0h'));
+  }
+  $('missao').innerHTML = blocos.map(function (b) {
+    return '<li><span>' + esc(TERR_LABEL[b.t] || b.t) + '</span><span class="h">' + fmtH(b.h) + '</span></li>';
+  }).join('');
+}
+async function renderProximo() {
+  if (!Store.ready) return;
+  var micros = await Store.all('microconteudos');
+  var p = Seeds.proximoArquivo(micros);
+  if (!p) { $('proximo').innerHTML = '<span class="empty">Fila vazia — todos os arquivos gerados.</span>'; return; }
+  $('proximo').innerHTML =
+    '<div class="prox"><div><div class="cod">' + esc(p.codigo) + '</div>' +
+    '<div style="font-size:.84rem">' + esc(p.nome) + '</div>' +
+    '<div class="meta" style="font-size:.72rem;color:var(--ink3)">' + esc(TERR_LABEL[p.territorio] || p.territorio) + ' · ' + esc(p.itemEdital || '') + ' · dif. ' + esc(p.dificuldade || '—') + '</div></div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px;align-items:end">' +
+    '<span class="tag ' + p.prioridade.toLowerCase() + '">' + esc(p.prioridade) + '</span>' +
+    '<button class="btn sec small" onclick="copiarCodigo(\'' + esc(p.codigo) + '\')">Copiar código</button></div></div>';
+}
+window.copiarCodigo = function (cod) {
+  (navigator.clipboard ? navigator.clipboard.writeText(cod) : Promise.reject())
+    .then(function () { toast(cod + ' copiado — cole no Prompt Mestre.'); })
+    .catch(function () { toast('Código: ' + cod); });
+};
+async function renderSemanaPlano() {
+  if (!Store.ready) return;
+  var sem = await Store.get('cronograma', semanaAtual());
+  if (!sem) { $('semanaPlano').textContent = '—'; return; }
+  var html = '';
+  if (sem.plano) {
+    html += Object.keys(sem.plano).filter(function (t) { return sem.plano[t].length; }).map(function (t) {
+      return '<div class="rowline"><span>' + esc(TERR_LABEL[t] || t) + '</span><b style="font-family:ui-monospace,monospace;font-size:.8rem">' + sem.plano[t].join(' · ') + '</b></div>';
+    }).join('');
+  } else if (sem.foco) {
+    html += '<div class="rowline"><span>' + esc(sem.ciclo ? sem.ciclo + ' — ' : '') + esc(sem.foco) + '</span></div>';
+  }
+  if (sem.nota) html += '<div class="rowline"><span class="meta">' + esc(sem.nota) + '</span></div>';
+  if (sem.discursiva) html += '<div class="rowline"><span>✍️ ' + esc(sem.discursiva) + '</span></div>';
+  if (sem.checkpoint) html += '<div class="rowline"><span>🎯 <b>' + esc(sem.checkpoint) + '</b> nesta semana</span></div>';
+  $('semanaPlano').innerHTML = html || '<span class="empty">—</span>';
+}
+async function renderTerritorios() {
+  if (!Store.ready) return;
+  var micros = await Store.all('microconteudos');
+  $('terrList').innerHTML = TERR_META.map(function (t) {
+    var lista = micros.filter(function (m) { return m.territorio === t.id; });
+    var done = lista.filter(function (m) { return m.status === 'CONCLUIDO'; }).length;
+    var pct = lista.length ? Math.round(done / lista.length * 100) : 0;
+    return '<div class="rowline"><div><b>' + esc(t.nome) + '</b>' +
+      '<div class="meta">peso ' + t.peso + ' · ' + done + '/' + lista.length + ' concluídos (' + pct + '%)</div></div>' +
+      '<span class="chip">líquido — <small>(Fase 5)</small></span></div>';
+  }).join('');
+}
+function renderSyncStatus() { var el = $('miSyncV'); if (el) el.textContent = Cloud.status(); }
+function renderAll() {
+  renderHeader(); renderBadges(); renderMissao();
+  renderProximo(); renderSemanaPlano(); renderTerritorios();
+  $('cfgProva').value = D.provaDate;
+}
+
+// ── wiring ──────────────────────────────────────────────────────────────────
+function wireUI() {
+  document.querySelectorAll('nav button').forEach(function (b) {
+    b.addEventListener('click', function () { goTab(b.dataset.tab); });
+  });
+  $('btnAvatar').addEventListener('click', function (e) { e.stopPropagation(); $('menu').classList.toggle('open'); });
+  document.addEventListener('click', function () { $('menu').classList.remove('open'); });
+  $('miTheme').addEventListener('click', function (e) { e.stopPropagation(); cycleTheme(); });
+  $('miLogout').addEventListener('click', function () {
+    if (Cloud.enabled) Cloud.signOut(); else toast('Modo local — não há sessão para sair.');
+  });
+  $('btnLogin').addEventListener('click', function () { Cloud.signIn(); });
+  $('cfgProva').addEventListener('change', function () {
+    if ($('cfgProva').value) { D.provaDate = $('cfgProva').value; save(); renderAll(); toast('Data da prova atualizada.'); }
+  });
+  $('btnExport').addEventListener('click', async function () {
+    var bundle = await Store.exportAll();
+    bundle.data.appState = D;
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(bundle)], { type: 'application/json' }));
+    a.download = 'bcb-study-backup-' + today() + '.json'; a.click();
+  });
+  $('fileImport').addEventListener('change', function (e) {
+    var f = e.target.files[0]; if (!f) return;
+    f.text().then(async function (txt) {
+      var b = JSON.parse(txt);
+      await Store.importAll(b);
+      if (b.data && b.data.appState) applyAppState(b.data.appState);
+      renderAll(); toast('Backup importado.');
+    }).catch(function () { toast('Arquivo de backup inválido.'); });
+    e.target.value = '';
+  });
+  $('btnReset').addEventListener('click', async function () {
+    if (!confirm('Zerar TODOS os dados locais? Exporte um backup antes.')) return;
+    await Store.resetAll();
+    localStorage.removeItem(SK);
+    location.reload();
+  });
+}
+
+// ── boot em duas fases (padrão R+) ─────────────────────────────────────────
+(function boot() {
+  applyTheme();
+  wireUI();
+  // fase assíncrona: Store + seeds; re-render quando pronto
+  Store.init().then(async function () {
+    try { await Seeds.seedAll(Store); } catch (e) { console.error('seed', e); }
+    var st = await Store.getSetting('appState');
+    if (st && !localStorage.getItem(SK)) applyAppState(st); // recupera D se ls foi limpo
+    if ($('app').style.display === 'block') renderAll();
+  });
+  if (Cloud.enabled && Cloud.init()) {
+    // onAuthStateChanged decide: showGate / gateBlocked / enterApp
+  } else {
+    $('localBanner').style.display = 'block';
+    route();
+  }
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0)
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+})();
+/*</app>*/
 </script>
 </body>
 </html>

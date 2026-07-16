@@ -1,39 +1,43 @@
-# 🏛️ Ultra BACEN — Sistema de Gestão da Aprovação
+# 🏛️ BCB Study — Painel de Comando da Aprovação
 
-PWA de alta performance para a preparação ao concurso de **Auditor do Banco Central do Brasil
-(Área Economia e Finanças)** — concurso autorizado em 03/07/2026 (170 vagas, edital previsto
-até jan/2027).
+App de gestão de aprovação para **Auditor do Banco Central do Brasil — Economia e Finanças**.
+Prova estimada **mar/2027**, edital até **03/01/2027**, banca-hipótese **Cebraspe**.
+Horizonte: 35 semanas · ~560 h · 16 h/semana.
 
-**App no ar:** https://aafj2023.github.io/ultra-bacen/ *(GitHub Pages — ver "Publicação" abaixo)*
+**App no ar:** https://aafj2023.github.io/ultra-bacen/
+*(irmão arquitetural do [R+ Study](https://github.com/aafj2023/r-plus-study) — single-file, vanilla, PWA)*
 
-## O que o app faz
+## O que é
 
-- 📊 **Dashboard executivo:** prontidão 0–100, horas vs. meta, taxa líquida Cebraspe 30d,
-  constância, gráficos semanais (horas e desempenho) em tema claro/escuro
-- 🚦 **Gestão à vista:** semáforo por disciplina (estável/atenção/crítico) + prioridades do dia
-- ⚙️ **Motor de decisão:** 12 regras SE/ENTÃO automáticas (ex.: líquida < alvo−15 p.p. →
-  aumentar carga; fila SRS estourada → zerar antes de conteúdo novo)
-- 🔁 **Revisão espaçada (SRS):** 1·3·7·15·30·60·90·180 dias; recall <50% regride o estágio
-- 📚 **Gestão das disciplinas:** horas, questões, líquida, domínio, ROI dinâmico
-- ➕ **Registro em ≤1 min** por bloco; dados no navegador (localStorage) com backup JSON
-- 📱 **PWA:** instalável no celular ("Adicionar à tela inicial") e funciona offline
+O painel registra, mede, projeta e cobra. As **aulas nascem fora** (Prompt Mestre em conversas
+do Claude → `.md` no Google Drive); o app rastreia status, guarda o link e diz o que vem depois.
+Não há LLM embutido.
 
-Métrica-mestra: **taxa líquida Cebraspe = (certas − erradas) ÷ total** — 1 erro anula 1 acerto.
+- **Motor Cebraspe:** +1,00/−0,50/0 · líquido como métrica-mestra · limiar de marcação p>1/3 ·
+  calibração 1–5 com Brier score · taxonomia fechada de 7 erros
+- **Motor de ritmo por território:** 11 territórios com peso; média agregada nunca mascara
+  atraso (Finanças adiantada ≠ Econometria em dia)
+- **Plano seedado:** 107 microconteúdos + 8 dormentes · cronograma de 35 semanas · CP1–CP4
+  com critérios numéricos e gatilho automático de reforço de Econometria
+- **Stack:** `index.html` single-file · Chart.js/Dexie/Firebase compat/KaTeX via CDN pinado
+  com SRI · IndexedDB com fallback localStorage · sync Firestore doc único · GitHub Pages
 
 ## Estrutura
 
 | Caminho | Conteúdo |
 |---|---|
-| `index.html` · `sw.js` · `manifest.webmanifest` | O app (single-file + service worker) |
-| `mentor/` | Kit de mentoria: diagnóstico, cenário do concurso, plano pré-edital, KPIs |
-| `mentor/sistema/` | Ultra Sistema: arquitetura (13 módulos), fórmulas Sheets/Notion, 36 regras do motor, manual operacional |
-
-## Publicação (uma vez)
-
-GitHub → **Settings → Pages → Source: Deploy from a branch → `main` / root → Save.**
-Em ~1 min o app estará no ar. Toda mudança commitada em `main` republica sozinha.
+| `index.html` | O app inteiro (CSS+HTML+JS; blocos testáveis entre marcadores `/*<bloco>*/`) |
+| `sw.js` · `manifest.webmanifest` | PWA (cache `bcb-v1`) |
+| `firestore.rules` | Regras definitivas (allowlist) — publicar no console do projeto `aprov-bacen` |
+| `tests/` | Bancada Node: extrai os blocos do index.html e roda os gates de cada fase |
+| `docs/` | `ARQUITETURA-HERDADA.md` (mapa do clone R+→BCB) · `DECISOES.md` (log vivo) |
+| `mentor/` | Kit de mentoria estratégica (diagnóstico, cenário do concurso, plano) |
+| `PROXIMOS_PASSOS.md` | Memória entre sessões (estado das fases 0–12) |
 
 ## Desenvolvimento
 
-Editar `index.html` → commit → push. Ao mudar libs em cache, subir a versão em `sw.js`
-(`CACHE = 'ultra-bacen-vN'`). Testar local: qualquer servidor estático na raiz.
+- **Gates:** `node tests/motor.test.js` · `node tests/store.test.js` — rodar antes de commit.
+- **Publicar:** commit + push na `main` → GitHub Pages republica em ~1 min.
+- **Mudou lib do CDN?** Atualizar tag no `index.html` + `PRECACHE` no `sw.js` + bump `bcb-vN`.
+- Datas de calendário são strings locais `YYYY-MM-DD` (`parseYMD`) — nunca `Date` UTC.
+- Prefixos de armazenamento: `bcb1_*` / `bcbDB` / `bcb-v1` — nunca `rplus*`.
