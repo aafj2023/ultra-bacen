@@ -18,9 +18,33 @@
 - **Email master:** `alvarofelisbertojr@gmail.com` (único). Confirmar antes de gravar em `firestore.rules`.
 - **Prefixo de storage:** `bcb1` (localStorage), DB `bcbDB`, cache `bcb-v1` — distinto de `rplus*` nos 5 pontos acoplados (gotcha #2 do mapa herdado), garantindo coexistência no mesmo origin do GitHub Pages.
 
+## 2026-07-16 — Firebase criado pelo dono (Fase 0 fechada)
+
+- Projeto **Aprov-Bacen** (`aprov-bacen`), Firestore em `southamerica-east1`, Auth Google ativo.
+- **Email master confirmado:** `alvarofelisbertojr@gmail.com`.
+- Config web (público por design — vai inline no `index.html` como `window.BCB_FIREBASE`):
+  `apiKey AIzaSyDXXbwnRD7zSEXstCEx5MxNhC_B_M__gMA · authDomain aprov-bacen.firebaseapp.com ·
+  projectId aprov-bacen · storageBucket aprov-bacen.firebasestorage.app ·
+  messagingSenderId 591355440221 · appId 1:591355440221:web:e80fa1fc30221ba615f1b4`
+- ⚠️ **Firestore em modo de teste — regras expiram ~15/08/2026.** As `firestore.rules`
+  definitivas (padrão allowlist do R+, master acima) DEVEM ser publicadas na Fase 3, antes
+  do prazo.
+
+## 2026-07-16 — Fase 1 entregue (motores puros)
+
+- `js/motor-cebraspe.js` (§5+§11) e `js/motor-ritmo.js` (§6+§10+§9.4); `tests/motor.test.js`
+  com **66 casos-limite, 66 verdes** (`node tests/motor.test.js`).
+- **Desvio deliberado da spec:** `LIMIAR = 1/3` exato, não o literal `0.3333` do §5.2 —
+  a própria §5.4 proíbe arredondamento interno (`deveMarcar(0.3333)===false` está nos testes).
+  UI exibe `33,33%` via `LIMIAR_LABEL`.
+- Premissas de borda gravadas em teste: `done == expected*1.1` → ontrack (banda estrita);
+  `examPacing` com 'ahead' espelhado a +5pp; critérios de checkpoint ≥ inclusivos;
+  CP sem dado = reprovado; gatilho Econometria dispara com dado ausente.
+- `composicaoSimulado` usa maior-resto (Hamilton) e preserva a ordem de chaves do blueprint.
+
 ## Pendências que bloqueiam fases
 
 | Fase bloqueada | Pendência | Quem |
 |---|---|---|
-| Fase 0 (fecho) / 3 (gate real) | `firebaseConfig` do projeto novo + confirmação do email master | dono |
+| Fase 3 (**prazo 15/08/2026**) | Publicar `firestore.rules` definitivas no console | Claude prepara · dono publica |
 | Fase 11 | Edital Auditor 2027 (para o gap analysis) | mundo |

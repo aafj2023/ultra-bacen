@@ -15,12 +15,10 @@ Abrir sessão do Claude neste repositório e dizer: "continuar o BCB Study — f
 O Claude lê este arquivo + `docs/` e sabe onde parou.
 
 ## 📍 Estado atual (2026-07-16)
-- [x] **Fase 0a:** R+ lido integralmente (mapa em `docs/ARQUITETURA-HERDADA.md`, 6 leitores + síntese)
-- [x] **Fase 0b:** perguntas do §17/§15 respondidas (ver `docs/DECISOES.md`)
-- [x] Repo + GitHub Pages no ar (herdados do v1)
-- [ ] **Fase 0c (bloqueada):** Firebase novo — dono cria projeto e fornece `firebaseConfig`
-- [ ] **Fase 1:** Motor Cebraspe (§5) + motor de ritmo (§6) — funções puras + testes de casos-limite. **Gate: não avançar com erro.**
-- [ ] Fases 2–12 conforme §14 da spec
+- [x] **Fase 0:** R+ lido (mapa em `docs/ARQUITETURA-HERDADA.md`) · §17 respondido · repo+Pages no ar · **Firebase `aprov-bacen` criado** (config em `docs/DECISOES.md`; ⚠️ rules de teste expiram ~15/08)
+- [x] **Fase 1:** motores puros entregues — `js/motor-cebraspe.js` (§5+§11) + `js/motor-ritmo.js` (§6+§10+§9.4) · **gate verde: `node tests/motor.test.js` → 66/66**
+- [ ] **Fase 2 (próxima):** Store (Dexie `bcbDB` + fallback ls) + seeds §8 (107 ativos + 8 dormentes, `console.assert` da volumetria) + cronograma §9 + checkpoints §10
+- [ ] Fases 3–12 conforme §14 da spec
 
 ## 🛠️ Convenções técnicas decididas
 - Prefixos: localStorage `bcb1*` · Dexie `bcbDB` · SW cache `bcb-v1` (nunca `rplus*` — coexistência no mesmo origin)
