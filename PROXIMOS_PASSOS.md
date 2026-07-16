@@ -19,7 +19,8 @@ O Claude lê este arquivo + `docs/` e sabe onde parou.
 - [x] **Fase 1:** motores puros entregues — `js/motor-cebraspe.js` (§5+§11) + `js/motor-ritmo.js` (§6+§10+§9.4) · **gate verde: `node tests/motor.test.js` → 66/66**
 - [x] **Fase 2:** `js/store.js` (dual idb/ls, API genérica, backup validado por app) + `js/seeds.js` (§8: 107 ativos + 8 dormentes c/ assert; §9: 35 semanas; §10: 6 checkpoints; `proximoArquivo()`) · **gate verde: `node tests/store.test.js` → 47/47** (+ regressão Fase 1 66/66)
 - [x] **Fase 3:** index.html novo (single-file, blocos inline + tests extraem do index) · Cloud/gate/onboarding/dark mode · sw.js bcb-v1 · firestore.rules prontas · **gates: motor 66/66 · store 47/47 · e2e navegador 16/16 (modo idb validado)**
-- [ ] **Fase 4 (próxima):** Territórios completos — drill-down por microconteúdo (código, prioridade, dificuldade, status, driveUrl), transição de status, prereqs/sucessores navegáveis
+- [x] **Fase 4:** Territórios completos — drill-down (grid → território → sheet do micro), transição de status com geradoEm, driveUrl validado, prereqs navegáveis, push explícito à nuvem · **gates: 66/66 + 47/47 + e2e fase-4 12/12 + regressão e2e fase-3 16/16**
+- [ ] **Fase 5 (próxima):** Itens — treino/revisão com trava de confiança 1-5, taxonomia obrigatória no erro, fila de reteste, cadastro manual + importador de lote; líquido passa a alimentar Início/Territórios
 - [ ] Fases 4–12 conforme §14 da spec
 
 ### Notas para a Fase 4

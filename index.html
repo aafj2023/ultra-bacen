@@ -127,6 +127,27 @@ nav button.active{color:var(--p);font-weight:700}
 .obcard ul{margin:8px 0 8px 18px;font-size:.85rem;color:var(--ink2)}
 .obcard li{margin:4px 0}
 .obcard label{font-size:.74rem;color:var(--ink2);display:block;margin:10px 0 4px}
+/* status de microconteúdo */
+.stchip{font-size:.64rem;font-weight:700;border-radius:6px;padding:2px 7px;letter-spacing:.02em}
+.st-PENDENTE{background:var(--line);color:var(--ink2)}
+.st-GERADO{background:var(--pl);color:var(--p)}
+.st-EM_ESTUDO{background:var(--warnl);color:var(--warn)}
+.st-CONCLUIDO{background:var(--okl);color:var(--ok)}
+.backbtn{font-size:.82rem;color:var(--p);font-weight:600;padding:8px 0;display:inline-flex;gap:6px;align-items:center}
+.terr-row{cursor:pointer}
+.micro-row{cursor:pointer}
+.micro-row .cod{font-family:ui-monospace,monospace;font-weight:700;font-size:.8rem}
+/* bottom-sheet (padrão R+) */
+.modalback{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:35;display:none}
+.modalback.open{display:block}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));z-index:36;max-width:720px;margin:0 auto;max-height:82vh;overflow:auto}
+.sheet h3{font-size:1rem;margin-bottom:2px}
+.sheet .sub{font-size:.74rem;color:var(--ink3);margin-bottom:10px}
+.stbtns{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px}
+.stbtns button{border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:.74rem;font-weight:600}
+.stbtns button.on{border-color:var(--p);background:var(--pl);color:var(--p)}
+.sheet label{font-size:.72rem;color:var(--ink2);display:block;margin:10px 0 4px}
+.linkchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 16px;font-size:.82rem;opacity:0;transition:opacity .25s;pointer-events:none;z-index:50;max-width:92%}
 .toast.show{opacity:1}
 .skel{background:linear-gradient(90deg,var(--line),var(--bg),var(--line));background-size:200% 100%;animation:sk 1.2s infinite;border-radius:8px;height:16px}
@@ -180,7 +201,10 @@ nav button.active{color:var(--p);font-weight:700}
 
     <!-- TERRITÓRIOS -->
     <section class="pane" id="pane-terr">
-      <div class="card"><h2>Territórios <span class="hint">peso · cobertura · líquido</span></h2><div id="terrList"><div class="skel"></div></div></div>
+      <div id="terrHome">
+        <div class="card"><h2>Territórios <span class="hint">peso · cobertura · líquido — toque para abrir</span></h2><div id="terrList"><div class="skel"></div></div></div>
+      </div>
+      <div id="terrDetail" style="display:none"></div>
     </section>
 
     <!-- ITENS -->
@@ -224,6 +248,7 @@ nav button.active{color:var(--p);font-weight:700}
   </nav>
 </div>
 <div class="toast" id="toast"></div>
+<div class="modalback" id="microBack"><div class="sheet" id="microSheet"></div></div>
 
 <script>
 /*<motor-cebraspe>*/
@@ -1319,12 +1344,112 @@ async function renderTerritorios() {
   $('terrList').innerHTML = TERR_META.map(function (t) {
     var lista = micros.filter(function (m) { return m.territorio === t.id; });
     var done = lista.filter(function (m) { return m.status === 'CONCLUIDO'; }).length;
+    var and = lista.filter(function (m) { return m.status === 'GERADO' || m.status === 'EM_ESTUDO'; }).length;
     var pct = lista.length ? Math.round(done / lista.length * 100) : 0;
-    return '<div class="rowline"><div><b>' + esc(t.nome) + '</b>' +
-      '<div class="meta">peso ' + t.peso + ' · ' + done + '/' + lista.length + ' concluídos (' + pct + '%)</div></div>' +
+    return '<div class="rowline terr-row" onclick="openTerr(\'' + t.id + '\')"><div><b>' + esc(t.nome) + '</b>' +
+      '<div class="meta">peso ' + t.peso + ' · ' + done + '/' + lista.length + ' concluídos (' + pct + '%)' + (and ? ' · ' + and + ' em andamento' : '') + '</div></div>' +
       '<span class="chip">líquido — <small>(Fase 5)</small></span></div>';
   }).join('');
 }
+
+// ── drill-down do território (§12.2) ────────────────────────────────────────
+var terrAtual = null;
+window.openTerr = function (id) {
+  terrAtual = id;
+  $('terrHome').style.display = 'none';
+  $('terrDetail').style.display = 'block';
+  goTab('terr');
+  renderTerrDetail();
+};
+window.backTerr = function () {
+  terrAtual = null;
+  $('terrDetail').style.display = 'none';
+  $('terrHome').style.display = 'block';
+  renderTerritorios();
+};
+function ordenaFila(a, b) {
+  var pa = Seeds.PRIORIDADE_ORDEM.indexOf(a.prioridade), pb = Seeds.PRIORIDADE_ORDEM.indexOf(b.prioridade);
+  return pa - pb || a.ordem - b.ordem;
+}
+async function renderTerrDetail() {
+  if (!Store.ready || !terrAtual) return;
+  var meta = TERR_META.find(function (t) { return t.id === terrAtual; }) || { nome: terrAtual, peso: '—' };
+  var micros = (await Store.all('microconteudos'))
+    .filter(function (m) { return m.territorio === terrAtual; })
+    .sort(ordenaFila);
+  var done = micros.filter(function (m) { return m.status === 'CONCLUIDO'; }).length;
+  var natureza = micros.length ? (micros[0].natureza || '—') : '—';
+  $('terrDetail').innerHTML =
+    '<button class="backbtn" onclick="backTerr()">← Territórios</button>' +
+    '<div class="card"><h2>' + esc(meta.nome) + '</h2>' +
+    '<div class="badges" style="margin:4px 0 2px">' +
+    '<span class="badge">peso <b>' + meta.peso + '</b></span>' +
+    '<span class="badge">' + esc(natureza) + '</span>' +
+    '<span class="badge"><b>' + done + '/' + micros.length + '</b> concluídos</span>' +
+    '<span class="badge">líquido — <small>(Fase 5)</small></span></div></div>' +
+    '<div class="card"><h2>Microconteúdos <span class="hint">ordem da fila de geração</span></h2>' +
+    micros.map(function (m) {
+      return '<div class="rowline micro-row" onclick="openMicro(\'' + m.codigo + '\')">' +
+        '<div><span class="cod">' + esc(m.codigo) + '</span> <span style="font-size:.82rem">' + esc(m.nome) + '</span>' +
+        '<div class="meta">' + esc(m.itemEdital || '—') + ' · dif. ' + esc(m.dificuldade || '—') +
+        (m.driveUrl ? ' · 📄 Drive' : '') + '</div></div>' +
+        '<div style="display:flex;flex-direction:column;gap:4px;align-items:end;flex:none">' +
+        '<span class="tag ' + m.prioridade.toLowerCase() + '">' + esc(m.prioridade) + '</span>' +
+        '<span class="stchip st-' + m.status + '">' + esc(m.status.replace('_', ' ')) + '</span></div></div>';
+    }).join('') + '</div>';
+}
+
+// ── sheet do microconteúdo: status, driveUrl, prereqs (§12.2) ───────────────
+window.openMicro = async function (cod) {
+  var m = await Store.get('microconteudos', cod);
+  if (!m) return;
+  var stBtns = Seeds.STATUS.map(function (s) {
+    return '<button class="' + (m.status === s ? 'on' : '') + '" onclick="setMicroStatus(\'' + cod + '\',\'' + s + '\')">' + s.replace('_', ' ') + '</button>';
+  }).join('');
+  var links = function (arr, titulo) {
+    if (!arr || !arr.length) return '';
+    return '<label>' + titulo + '</label><div class="linkchips">' + arr.map(function (c) {
+      return '<button class="chip" onclick="openMicro(\'' + c + '\')">' + esc(c) + '</button>';
+    }).join('') + '</div>';
+  };
+  $('microSheet').innerHTML =
+    '<h3><span style="font-family:ui-monospace,monospace">' + esc(m.codigo) + '</span> · ' + esc(m.nome) + '</h3>' +
+    '<div class="sub">' + esc(TERR_LABEL[m.territorio] || m.territorio || 'dormente') + ' · ' + esc(m.itemEdital || '—') +
+    ' · dif. ' + esc(m.dificuldade || '—') + ' · <span class="tag ' + m.prioridade.toLowerCase() + '">' + esc(m.prioridade) + '</span>' +
+    (m.geradoEm ? ' · gerado em ' + esc(m.geradoEm) : '') +
+    (m.dormente ? ' · 💤 dormente (gatilho: ' + esc(m.gatilho) + ')' : '') + '</div>' +
+    '<label>Status</label><div class="stbtns">' + stBtns + '</div>' +
+    '<label>Arquivo no Drive (.md gerado pelo Prompt Mestre)</label>' +
+    '<div style="display:flex;gap:6px"><input type="url" id="mDrive" placeholder="https://…" value="' + esc(m.driveUrl || '') + '">' +
+    '<button class="btn small" onclick="salvarDrive(\'' + cod + '\')">Salvar</button></div>' +
+    (m.driveUrl ? '<div style="margin-top:6px"><a href="' + esc(m.driveUrl) + '" target="_blank" rel="noopener">📄 Abrir no Drive</a></div>' : '') +
+    links(m.prereqs, 'Pré-requisitos') + links(m.sucessores, 'Sucessores') +
+    '<label>Itens deste microconteúdo</label><p class="empty">Histórico e "gerar lote" chegam na Fase 5.</p>' +
+    '<button class="btn sec" style="margin-top:12px" onclick="fecharMicro()">Fechar</button>';
+  $('microBack').classList.add('open');
+};
+window.fecharMicro = function () { $('microBack').classList.remove('open'); };
+window.setMicroStatus = async function (cod, st) {
+  if (Seeds.STATUS.indexOf(st) < 0) return;
+  var m = await Store.get('microconteudos', cod);
+  var patch = { status: st };
+  if (st === 'GERADO' && !m.geradoEm) patch.geradoEm = today();
+  await Store.update('microconteudos', cod, patch);
+  Cloud.schedulePush(); // escrita fora do save() → push explícito (gotcha #5)
+  openMicro(cod);
+  if (terrAtual) renderTerrDetail();
+  renderProximo(); renderTerritorios();
+  toast(cod + ' → ' + st.replace('_', ' '));
+};
+window.salvarDrive = async function (cod) {
+  var v = $('mDrive').value.trim();
+  if (v && !/^https?:\/\//.test(v)) { toast('URL inválida — precisa começar com http(s)://'); return; }
+  await Store.update('microconteudos', cod, { driveUrl: v || null });
+  Cloud.schedulePush();
+  openMicro(cod);
+  if (terrAtual) renderTerrDetail();
+  toast(v ? 'Link do Drive salvo.' : 'Link removido.');
+};
 function renderSyncStatus() { var el = $('miSyncV'); if (el) el.textContent = Cloud.status(); }
 function renderAll() {
   renderHeader(); renderBadges(); renderMissao();
@@ -1339,6 +1464,7 @@ function wireUI() {
   });
   $('btnAvatar').addEventListener('click', function (e) { e.stopPropagation(); $('menu').classList.toggle('open'); });
   document.addEventListener('click', function () { $('menu').classList.remove('open'); });
+  $('microBack').addEventListener('click', function (e) { if (e.target === $('microBack')) fecharMicro(); });
   $('miTheme').addEventListener('click', function (e) { e.stopPropagation(); cycleTheme(); });
   $('miLogout').addEventListener('click', function () {
     if (Cloud.enabled) Cloud.signOut(); else toast('Modo local — não há sessão para sair.');
