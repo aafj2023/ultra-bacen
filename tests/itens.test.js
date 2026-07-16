@@ -91,5 +91,21 @@ eq('JSON inválido rejeitado', S.parseImport('[{quebrado', VALIDOS).erros[0].mot
   eq('banco vazio → tudo faltante', [m.fila.length, m.totalFaltante], [0, 5]);
 }
 
+
+// ═══ contarLinhas / diffLinhas (Fase 7) ═══
+eq('vazio = 0 linhas', S.contarLinhas(''), 0);
+eq('1 char = 1 linha', S.contarLinhas('a'), 1);
+eq('70 chars = 1 linha', S.contarLinhas('x'.repeat(70)), 1);
+eq('71 chars = 2 linhas', S.contarLinhas('x'.repeat(71)), 2);
+eq('parágrafo vazio conta 1', S.contarLinhas('a\n\nb'), 3);
+eq('2 parágrafos de 100 = 4 linhas', S.contarLinhas('y'.repeat(100) + '\n' + 'z'.repeat(100)), 4);
+{
+  const d = S.diffLinhas('a\nb\nc', 'a\nX\nc');
+  eq('diff marca troca', d.map(l => l.tipo).join(''), '=-+=');
+  eq('diff textos', [d[1].texto, d[2].texto], ['b', 'X']);
+  eq('diff idêntico = tudo =', S.diffLinhas('a\nb', 'a\nb').every(l => l.tipo === '='), true);
+  eq('diff inserção no fim', S.diffLinhas('a', 'a\nb').map(l => l.tipo).join(''), '=+');
+}
+
 console.log(fails === 0 ? `✅ ${count}/${count} casos passaram` : `❌ ${fails}/${count} falharam`);
 process.exit(fails ? 1 : 0);

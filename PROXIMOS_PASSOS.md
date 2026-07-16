@@ -22,7 +22,8 @@ O Claude lê este arquivo + `docs/` e sabe onde parou.
 - [x] **Fase 4:** Territórios completos — drill-down (grid → território → sheet do micro), transição de status com geradoEm, driveUrl validado, prereqs navegáveis, push explícito à nuvem · **gates: 66/66 + 47/47 + e2e fase-4 12/12 + regressão e2e fase-3 16/16**
 - [x] **Fase 5:** Itens C/E — banco de questões (tabela banco, Dexie v2), cadastro manual + importador (JSON e linhas, com relatório de rejeição), fluxo TRAVADO confiança→resposta→taxonomia, fila de reteste (última errada ou mal calibrada), líquido real no Início/Territórios/drill/micro + Brier + gerar lote por micro · **gates: 11/11 + 66/66 + 47/47 + e2e 17/17**
 - [x] **Fase 6:** Simulado — completo 3h30/parcial/mini (duração proporcional), composição pelo blueprint via montarSimulado puro (faltantes reportados, sem corte silencioso), zero feedback durante, hard stop → restante vira BRANCO automático, correção final (líquido/pontos/Brier/diagnóstico/por-território) com taxonomia inline · **gates: itens 17/17 + e2e fase-6 11/11 + regressões**
-- [ ] **Fase 7 (próxima):** Discursivas — editor com contador/bloqueio de 80 linhas, cronômetro, autosave, versionamento imutável (paiId), diff entre versões, modo às cegas, grade de autoavaliação
+- [x] **Fase 7:** Discursivas — editor com bloqueio absoluto (40 linhas F1 → 80 F2; 1 linha=70 chars, premissa), cronômetro, autosave 10s local/30s nuvem, versionamento imutável com paiId, diff LCS entre versões, modo às cegas, grade de autoavaliação (4 critérios 0-10 → nota média) · **gates: puros 27/27 + e2e fase-7 11/11 + regressões**
+- [ ] **Fase 8 (próxima):** SRS — stages D+1/7/15/30 + react, reviewUrgency, teto diário, reconstrução retroativa (seedRetro), dobra ~15% em DIREITO/LOGICA/COSIF/ECONOMETRIA; gancho estudo→revisão
 - [ ] Fases 7–12 conforme §14 da spec
 
 ### Notas para a Fase 4

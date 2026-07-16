@@ -240,7 +240,10 @@ nav button.active{color:var(--p);font-weight:700}
         </div>
         <p class="empty" style="margin-top:8px">Regra da prova: +1,00 · −0,50 · 0. Marque só com p &gt; 33,33%. Ao acabar o tempo, o que faltar vira BRANCO — como na vida.</p>
       </div>
-      <div class="card"><h2>Discursivas</h2><p class="empty">Fase 7: editor com bloqueio em 80 linhas, autosave, versionamento imutável e grade de autoavaliação.</p></div>
+      <div class="card"><h2>Discursivas <span class="hint">50 pts cada · até 80 linhas · versão nunca se edita</span></h2>
+        <button class="btn small" id="btnNovaDisc">✍️ Nova discursiva</button>
+        <div id="discLista" style="margin-top:10px"><span class="empty">Nenhuma ainda. Meta: 1/semana (D1 na semana 3).</span></div>
+      </div>
       <div class="card"><h2>Stats & Checkpoints</h2><p class="empty">Fases 9–10: líquido acumulado, calibração (Brier), mapa de erros, CP1–CP4 com gatilho de Econometria.</p></div>
       <div class="card"><h2>⚙ Plano</h2>
         <label style="font-size:.74rem;color:var(--ink2)">Data estimada da prova</label>
@@ -1063,6 +1066,37 @@ function montarSimulado(banco, composicao, rnd) {
   return { fila: fila, faltantes: faltantes, totalFaltante: Object.keys(faltantes).reduce(function (s, k) { return s + faltantes[k]; }, 0) };
 }
 
+// ── Fase 7: discursivas (§12.5) — funções puras ─────────────────────────────
+// 1 linha = 70 caracteres (premissa: folha padrão de prova; ver DECISOES).
+// Parágrafo vazio ocupa 1 linha. Bloqueio absoluto é da UI; a contagem é daqui.
+var LINHA_CHARS = 70;
+function contarLinhas(texto) {
+  if (!texto) return 0;
+  return texto.split('\n').reduce(function (s, par) {
+    return s + Math.max(1, Math.ceil(par.length / LINHA_CHARS));
+  }, 0);
+}
+// Diff linha a linha via LCS (textos de ≤80 linhas — custo irrelevante).
+// Retorna [{tipo:'='|'-'|'+', texto}]: '-' só na versão antiga, '+' só na nova.
+function diffLinhas(antigo, novo) {
+  var a = (antigo || '').split('\n'), b = (novo || '').split('\n');
+  var n = a.length, m = b.length, i, j;
+  var L = [];
+  for (i = 0; i <= n; i++) { L.push(new Array(m + 1).fill(0)); }
+  for (i = n - 1; i >= 0; i--)
+    for (j = m - 1; j >= 0; j--)
+      L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  var out = []; i = 0; j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ tipo: '=', texto: a[i] }); i++; j++; }
+    else if (L[i + 1][j] >= L[i][j + 1]) { out.push({ tipo: '-', texto: a[i] }); i++; }
+    else { out.push({ tipo: '+', texto: b[j] }); j++; }
+  }
+  while (i < n) { out.push({ tipo: '-', texto: a[i++] }); }
+  while (j < m) { out.push({ tipo: '+', texto: b[j++] }); }
+  return out;
+}
+
 // ── Fase 5: fila de reteste (§12.3 passo 5) ─────────────────────────────────
 // Regra: a ÚLTIMA tentativa da questão foi errada OU mal calibrada → reteste.
 // Erro sem taxonomia não sai da fila (a UI trava, mas a regra vale aqui também).
@@ -1118,7 +1152,8 @@ var M = {
   NATUREZA: NATUREZA, buildMicros: buildMicros, buildCronograma: buildCronograma,
   SEED_CHECKPOINTS: SEED_CHECKPOINTS, proximoArquivo: proximoArquivo, seedAll: seedAll,
   parseImport: parseImport, filaReteste: filaReteste,
-  BLUEPRINT_TERRITORIOS: BLUEPRINT_TERRITORIOS, montarSimulado: montarSimulado
+  BLUEPRINT_TERRITORIOS: BLUEPRINT_TERRITORIOS, montarSimulado: montarSimulado,
+  LINHA_CHARS: LINHA_CHARS, contarLinhas: contarLinhas, diffLinhas: diffLinhas
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = M;
 else root.Seeds = M;
@@ -1879,6 +1914,159 @@ window.classificarErroCorrecao = async function (id, tipo) {
   if (row) row.querySelector('select').outerHTML = '<span class="stchip st-GERADO">' + esc(tipo) + '</span>';
 };
 
+// ═══════════ FASE 7 — DISCURSIVAS (§12.5) ═══════════
+// Versionamento IMUTÁVEL: submeter = registro novo (paiId encadeia versões).
+// Limite: 40 linhas até a semana 10, 80 depois. Autosave: rascunho no
+// localStorage a cada 10s + nuvem (D.discDraft) a cada 30s.
+var DISC_DRAFT_KEY = 'bcb1_disc_draft';
+var discTimers = { local: null, nuvem: null, cron: null };
+function limiteLinhas() { return semanaAtual() <= 10 ? 40 : 80; }
+function pararDiscTimers() { Object.keys(discTimers).forEach(function (k) { clearInterval(discTimers[k]); discTimers[k] = null; }); }
+
+async function renderDiscursivas() {
+  if (!Store.ready) return;
+  var todas = (await Store.all('discursivas')).sort(function (a, b) { return b.createdAt - a.createdAt; });
+  if (!todas.length) { $('discLista').innerHTML = '<span class="empty">Nenhuma ainda. Meta: 1/semana (D1 na semana 3).</span>'; return; }
+  // agrupa por raiz (paiId-chain): raiz = registro sem paiId
+  var raizDe = {};
+  todas.forEach(function (d) { raizDe[d.id] = d.paiId || d.id; });
+  todas.forEach(function (d) { var r = raizDe[d.id]; while (raizDe[r] !== r && raizDe[r] !== undefined && raizDe[r] !== r) r = raizDe[r]; raizDe[d.id] = r; });
+  var grupos = {};
+  todas.forEach(function (d) { (grupos[raizDe[d.id]] = grupos[raizDe[d.id]] || []).push(d); });
+  $('discLista').innerHTML = Object.keys(grupos).map(function (rid) {
+    var vs = grupos[rid].sort(function (a, b) { return a.versao - b.versao; });
+    var ult = vs[vs.length - 1];
+    return '<div class="rowline micro-row" onclick="verDiscursiva(' + ult.id + ')"><div>' +
+      '<b>' + esc(ult.tema || 'Sem tema') + '</b>' + (ult.cega ? ' <span class="tag alta">ÀS CEGAS</span>' : '') +
+      '<div class="meta">' + esc(ult.data) + ' · v' + ult.versao + ' (' + vs.length + (vs.length > 1 ? ' versões' : ' versão') + ') · ' + ult.linhas + ' linhas</div></div>' +
+      '<span class="chip">nota <b>' + (ult.nota == null ? '—' : ult.nota.toFixed(1).replace('.', ',')) + '</b></span></div>';
+  }).join('');
+}
+window.abrirEditorDisc = function (base) { // base = registro anterior (nova versão) ou null
+  var draft = null;
+  try { draft = JSON.parse(localStorage.getItem(DISC_DRAFT_KEY)); } catch (e) {}
+  if (base) draft = { tema: base.tema, enunciado: base.enunciado, corpo: base.corpo, paiId: base.id, versao: base.versao + 1, cega: false, t0: Date.now() };
+  if (!draft) draft = { tema: '', enunciado: '', corpo: '', paiId: null, versao: 1, cega: false, t0: Date.now() };
+  if (!draft.t0) draft.t0 = Date.now();
+  var lim = limiteLinhas();
+  $('itemSheet').innerHTML =
+    '<h3>Discursiva ' + (draft.versao > 1 ? '· v' + draft.versao : '') + '</h3>' +
+    '<div class="sub">🕐 <b id="discCron">00:00</b> · limite <b>' + lim + ' linhas</b> (bloqueio absoluto) · situação-problema, 50 pts</div>' +
+    '<label>Tema</label><input id="dTema" value="' + esc(draft.tema) + '">' +
+    '<label>Comando/enunciado</label><textarea id="dEnun" rows="2" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px;font:inherit;color:inherit">' + esc(draft.enunciado) + '</textarea>' +
+    '<label>Texto — <b id="dLinhas">0</b>/' + lim + ' linhas <span id="dTrava" style="color:var(--bad)"></span></label>' +
+    '<textarea id="dCorpo" rows="12" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px;font:inherit;color:inherit">' + esc(draft.corpo) + '</textarea>' +
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="dCega" style="width:auto"' + (draft.cega ? ' checked' : '') + '> Às cegas (sem consulta a material)</label>' +
+    '<button class="btn" style="margin-top:12px" onclick="submeterDiscursiva()">Submeter (imutável)</button>' +
+    '<button class="btn sec" style="margin-top:8px" onclick="fecharEditorDisc()">Fechar (rascunho fica salvo)</button>';
+  window._discDraft = draft;
+  var corpo = $('dCorpo');
+  function conta() {
+    var n = Seeds.contarLinhas(corpo.value);
+    if (n > lim) { // bloqueio ABSOLUTO: reverte além do limite
+      while (Seeds.contarLinhas(corpo.value) > lim) corpo.value = corpo.value.slice(0, -1);
+      n = Seeds.contarLinhas(corpo.value);
+      $('dTrava').textContent = '· limite atingido';
+    } else $('dTrava').textContent = '';
+    $('dLinhas').textContent = n;
+  }
+  corpo.addEventListener('input', conta); conta();
+  function snap() {
+    window._discDraft.tema = $('dTema').value; window._discDraft.enunciado = $('dEnun').value;
+    window._discDraft.corpo = corpo.value; window._discDraft.cega = $('dCega').checked;
+    return window._discDraft;
+  }
+  pararDiscTimers();
+  discTimers.local = setInterval(function () { localStorage.setItem(DISC_DRAFT_KEY, JSON.stringify(snap())); }, 10000);
+  discTimers.nuvem = setInterval(function () { D.discDraft = snap(); save(); }, 30000);
+  discTimers.cron = setInterval(function () {
+    var s = Math.floor((Date.now() - window._discDraft.t0) / 1000);
+    var el = $('discCron');
+    if (el) el.textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }, 1000);
+  $('itemBack').classList.add('open');
+};
+window.fecharEditorDisc = function () {
+  if (window._discDraft) {
+    window._discDraft.tema = $('dTema').value; window._discDraft.enunciado = $('dEnun').value;
+    window._discDraft.corpo = $('dCorpo').value; window._discDraft.cega = $('dCega').checked;
+    localStorage.setItem(DISC_DRAFT_KEY, JSON.stringify(window._discDraft));
+  }
+  pararDiscTimers(); fecharItem();
+};
+window.submeterDiscursiva = async function () {
+  var d = window._discDraft;
+  d.tema = $('dTema').value.trim(); d.enunciado = $('dEnun').value.trim();
+  d.corpo = $('dCorpo').value; d.cega = $('dCega').checked;
+  if (!d.tema) { toast('Dê um tema.'); return; }
+  if (Seeds.contarLinhas(d.corpo) < 5) { toast('Texto curto demais (mín. 5 linhas).'); return; }
+  var rec = await Store.add('discursivas', {
+    data: today(), tema: d.tema, enunciado: d.enunciado, corpo: d.corpo,
+    linhas: Seeds.contarLinhas(d.corpo), tempoMs: Date.now() - d.t0,
+    versao: d.versao, paiId: d.paiId, cega: d.cega, nota: null, grade: null
+  });
+  localStorage.removeItem(DISC_DRAFT_KEY);
+  delete D.discDraft; save();
+  pararDiscTimers();
+  window._discDraft = null;
+  Cloud.schedulePush();
+  abrirGrade(rec.id);
+  renderDiscursivas();
+};
+// grade de autoavaliação (decisão §17): 4 critérios 0-10 → nota = média
+var GRADE_CRITERIOS = [
+  ['estrutura', 'Estrutura (intro/desenvolvimento/conclusão, paragrafação)'],
+  ['conteudo', 'Conteúdo técnico (precisão, completude do comando)'],
+  ['norma', 'Norma culta (gramática, coesão)'],
+  ['aderencia', 'Aderência ao comando (respondeu TUDO que foi pedido?)']
+];
+window.abrirGrade = async function (id) {
+  var d = await Store.get('discursivas', id);
+  var g = d.grade || {};
+  $('itemSheet').innerHTML =
+    '<h3>Autoavaliação · ' + esc(d.tema) + ' (v' + d.versao + ')</h3>' +
+    '<div class="sub">Corrija contra o espelho que você definir ANTES de reler o texto.</div>' +
+    GRADE_CRITERIOS.map(function (c) {
+      return '<label>' + c[1] + ' — <b id="gv_' + c[0] + '">' + (g[c[0]] != null ? g[c[0]] : 5) + '</b>/10</label>' +
+        '<input type="range" min="0" max="10" step="1" value="' + (g[c[0]] != null ? g[c[0]] : 5) + '" id="g_' + c[0] + '" oninput="document.getElementById(\'gv_' + c[0] + '\').textContent=this.value">';
+    }).join('') +
+    '<button class="btn" style="margin-top:12px" onclick="salvarGrade(' + id + ')">Salvar nota</button>' +
+    '<button class="btn sec" style="margin-top:8px" onclick="fecharItem();renderDiscursivas()">Depois</button>';
+  $('itemBack').classList.add('open');
+};
+window.salvarGrade = async function (id) {
+  var grade = {};
+  GRADE_CRITERIOS.forEach(function (c) { grade[c[0]] = +$('g_' + c[0]).value; });
+  var nota = GRADE_CRITERIOS.reduce(function (s, c) { return s + grade[c[0]]; }, 0) / GRADE_CRITERIOS.length;
+  await Store.update('discursivas', id, { grade: grade, nota: nota });
+  Cloud.schedulePush();
+  fecharItem(); renderDiscursivas();
+  toast('Nota ' + nota.toFixed(1).replace('.', ',') + '/10 registrada.');
+};
+window.verDiscursiva = async function (id) {
+  var d = await Store.get('discursivas', id);
+  var anterior = d.paiId ? await Store.get('discursivas', d.paiId) : null;
+  var html =
+    '<h3>' + esc(d.tema) + ' <span class="sub">v' + d.versao + ' · ' + esc(d.data) + ' · ' + d.linhas + ' linhas · ' + Math.round((d.tempoMs || 0) / 60000) + 'min' + (d.cega ? ' · às cegas' : '') + '</span></h3>' +
+    (d.enunciado ? '<p class="empty" style="margin:6px 0">' + esc(d.enunciado) + '</p>' : '') +
+    '<div class="badges" style="margin:6px 0"><span class="badge">nota <b>' + (d.nota == null ? '—' : d.nota.toFixed(1).replace('.', ',')) + '</b></span></div>';
+  if (anterior) {
+    html += '<label>Diff vs v' + anterior.versao + '</label><div style="font-size:.78rem;font-family:ui-monospace,monospace;max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:8px">' +
+      Seeds.diffLinhas(anterior.corpo, d.corpo).map(function (l) {
+        var cor = l.tipo === '+' ? 'var(--ok)' : l.tipo === '-' ? 'var(--bad)' : 'var(--ink3)';
+        return '<div style="color:' + cor + '">' + l.tipo + ' ' + esc(l.texto || '¶') + '</div>';
+      }).join('') + '</div>';
+  }
+  html += '<label>Texto (imutável)</label><div style="font-size:.84rem;white-space:pre-wrap;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:8px">' + esc(d.corpo) + '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">' +
+    '<button class="btn small" onclick="fecharItem();abrirEditorDisc(window._verDisc)">✍️ Nova versão</button>' +
+    '<button class="btn sec small" onclick="abrirGrade(' + d.id + ')">Reavaliar nota</button>' +
+    '<button class="btn sec small" onclick="fecharItem()">Fechar</button></div>';
+  window._verDisc = d;
+  $('itemSheet').innerHTML = html;
+  $('itemBack').classList.add('open');
+};
+
 // ── cadastro manual + importador ────────────────────────────────────────────
 window.abrirCadastro = async function (microPre) {
   var micros = (await Store.all('microconteudos')).filter(function (m) { return !m.dormente; }).sort(ordenaFila);
@@ -1934,7 +2122,7 @@ window.executarImport = async function () {
 };
 function renderAll() {
   renderHeader(); renderBadges(); renderMissao();
-  renderProximo(); renderSemanaPlano(); renderTerritorios(); renderItens();
+  renderProximo(); renderSemanaPlano(); renderTerritorios(); renderItens(); renderDiscursivas();
   $('cfgProva').value = D.provaDate;
 }
 
@@ -1952,6 +2140,7 @@ function wireUI() {
   $('btnReteste').addEventListener('click', function () { iniciarSessao('reteste'); });
   $('btnNovoItem').addEventListener('click', function () { abrirCadastro(); });
   $('btnImport').addEventListener('click', function () { abrirImport(); });
+  $('btnNovaDisc').addEventListener('click', function () { abrirEditorDisc(null); });
   $('miTheme').addEventListener('click', function (e) { e.stopPropagation(); cycleTheme(); });
   $('miLogout').addEventListener('click', function () {
     if (Cloud.enabled) Cloud.signOut(); else toast('Modo local — não há sessão para sair.');
