@@ -150,6 +150,18 @@ nav button.active{color:var(--p);font-weight:700}
 .linkchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 16px;font-size:.82rem;opacity:0;transition:opacity .25s;pointer-events:none;z-index:50;max-width:92%}
 .toast.show{opacity:1}
+.pbar{height:8px;background:var(--line);border-radius:5px;position:relative;margin-top:5px}
+.pfill{height:100%;border-radius:5px;background:var(--p);max-width:100%}
+.pmark{position:absolute;top:-2px;width:2px;height:12px;background:var(--ink3);border-radius:1px}
+.pill{font-size:.62rem;font-weight:700;border-radius:6px;padding:2px 7px;flex:none}
+.pill.done,.pill.ahead{background:var(--okl);color:var(--ok)}
+.pill.ontrack{background:var(--pl);color:var(--p)}
+.pill.behind{background:var(--badl);color:var(--bad)}
+.hm{display:grid;grid-template-rows:repeat(7,10px);grid-auto-flow:column;gap:3px;overflow-x:auto;padding:4px 0}
+.hm i{width:10px;height:10px;border-radius:2px;background:var(--line)}
+.hm i.l1{background:#9ec5f4}.hm i.l2{background:#5598e7}.hm i.l3{background:#2a78d6}.hm i.l4{background:#104281}
+html[data-theme=dark] .hm i.l1{background:#1c5cab}html[data-theme=dark] .hm i.l2{background:#2a78d6}html[data-theme=dark] .hm i.l3{background:#5598e7}html[data-theme=dark] .hm i.l4{background:#9ec5f4}
+.chartbox{height:200px;position:relative}
 .skel{background:linear-gradient(90deg,var(--line),var(--bg),var(--line));background-size:200% 100%;animation:sk 1.2s infinite;border-radius:8px;height:16px}
 @keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
 </style>
@@ -192,6 +204,17 @@ nav button.active{color:var(--p);font-weight:700}
       <div class="card"><h2>Missão de hoje <span class="hint" id="mTitle"></span></h2>
         <ul class="mission" id="missao"></ul>
         <div class="inviolavel"><span class="chip">Anki diário</span><span class="chip">Discursiva de domingo</span></div>
+      </div>
+      <div class="card"><h2>➕ Registrar estudo <span class="hint">alimenta o ritmo por território</span></h2>
+        <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+          <div style="flex:1;min-width:150px"><label style="font-size:.72rem;color:var(--ink2)">Frente</label><select id="sTerr"></select></div>
+          <div><label style="font-size:.72rem;color:var(--ink2)">Minutos</label><input type="number" id="sMin" value="60" min="5" max="600" style="width:90px"></div>
+          <button class="btn small" id="btnSessao">Registrar</button>
+        </div>
+        <div id="sHoje" class="empty" style="margin-top:8px">—</div>
+      </div>
+      <div class="card"><h2>Semana por território <span class="hint">realizado × planejado (ALVO Fase 1)</span></h2>
+        <div id="horizontes"><div class="skel"></div></div>
       </div>
       <div class="card"><h2>Próximo arquivo <span class="hint">gerar no Prompt Mestre e salvar no Drive</span></h2>
         <div id="proximo"><div class="skel"></div></div>
@@ -251,7 +274,18 @@ nav button.active{color:var(--p);font-weight:700}
         <button class="btn small" id="btnNovaDisc">✍️ Nova discursiva</button>
         <div id="discLista" style="margin-top:10px"><span class="empty">Nenhuma ainda. Meta: 1/semana (D1 na semana 3).</span></div>
       </div>
-      <div class="card"><h2>Stats & Checkpoints</h2><p class="empty">Fases 9–10: líquido acumulado, calibração (Brier), mapa de erros, CP1–CP4 com gatilho de Econometria.</p></div>
+      <div class="card"><h2>📊 Stats</h2>
+        <div class="badges" id="stTop"></div>
+        <label style="font-size:.72rem;color:var(--ink2);display:block;margin-top:8px">Atividade (12 semanas)</label>
+        <div class="hm" id="stHeat"></div>
+        <label style="font-size:.72rem;color:var(--ink2);display:block;margin-top:8px">Líquido por semana</label>
+        <div class="chartbox"><canvas id="chLiq"></canvas></div>
+        <label style="font-size:.72rem;color:var(--ink2);display:block;margin-top:10px">Calibração: acerto real × esperado por confiança</label>
+        <div class="chartbox"><canvas id="chCal"></canvas></div>
+        <label style="font-size:.72rem;color:var(--ink2);display:block;margin-top:10px">Mapa de erros (taxonomia)</label>
+        <div id="stErros" class="empty">—</div>
+      </div>
+      <div class="card"><h2>🎯 Checkpoints</h2><p class="empty">Fase 10: CP1–CP4 com semáforo por território e gatilho automático da Econometria.</p></div>
       <div class="card"><h2>⚙ Plano</h2>
         <label style="font-size:.74rem;color:var(--ink2)">Data estimada da prova</label>
         <input type="date" id="cfgProva" style="margin:4px 0 10px">
@@ -1475,6 +1509,7 @@ function obNext() {
 function goTab(tab) {
   document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
   document.querySelectorAll('.pane').forEach(function (p) { p.classList.toggle('active', p.id === 'pane-' + tab); });
+  if (tab === 'mais' && typeof renderStats === 'function') renderStats(); // charts precisam do pane visível
 }
 
 // ── renders da Fase 3 ───────────────────────────────────────────────────────
@@ -1981,6 +2016,138 @@ window.classificarErroCorrecao = async function (id, tipo) {
   if (row) row.querySelector('select').outerHTML = '<span class="stchip st-GERADO">' + esc(tipo) + '</span>';
 };
 
+// ═══════════ FASE 9 — SESSÕES, HORIZONTES E STATS ═══════════
+var FRENTES = ['MACRO','ECONOMETRIA','FINANCAS','COSIF','LOGICA','DIREITO','DISCURSIVA','DRILL',
+               'PORTUGUES','MICRO','FMM','ESTATISTICA','ATU','REVISAO_ANKI','QUESTOES'];
+window.registrarSessao = async function () {
+  var terr = $('sTerr').value, min = Math.max(5, Math.min(600, +$('sMin').value || 60));
+  await Store.add('sessoes', { data: today(), territorio: terr, minutos: min });
+  Cloud.schedulePush();
+  renderSessoesHoje(); renderHorizontes(); renderStats();
+  toast('+' + min + 'min em ' + (TERR_LABEL[terr] || terr) + '.');
+};
+window.desfazerSessao = async function () {
+  var ss = (await Store.all('sessoes')).filter(function (s) { return s.data === today(); });
+  if (!ss.length) return;
+  var ult = ss.reduce(function (m, s) { return s.createdAt > m.createdAt ? s : m; });
+  await Store.remove('sessoes', ult.id);
+  Cloud.schedulePush();
+  renderSessoesHoje(); renderHorizontes(); renderStats();
+  toast('Desfeito.');
+};
+async function renderSessoesHoje() {
+  if (!Store.ready) return;
+  var ss = (await Store.all('sessoes')).filter(function (s) { return s.data === today(); });
+  var tot = ss.reduce(function (a, s) { return a + s.minutos; }, 0);
+  $('sHoje').innerHTML = ss.length
+    ? 'Hoje: <b>' + (tot / 60).toFixed(1).replace('.', ',') + 'h</b> — ' +
+      ss.map(function (s) { return (TERR_LABEL[s.territorio] || s.territorio) + ' ' + s.minutos + 'min'; }).join(' · ') +
+      ' <button class="btn sec small" style="margin-left:6px" onclick="desfazerSessao()">desfazer</button>'
+    : 'Nada registrado hoje.';
+}
+async function renderHorizontes() {
+  if (!Store.ready) return;
+  var seg = mondayStr();
+  var ss = (await Store.all('sessoes')).filter(function (s) { return s.data >= seg; });
+  var horas = {};
+  ss.forEach(function (s) { horas[s.territorio] = (horas[s.territorio] || 0) + s.minutos / 60; });
+  var diaIdx = (new Date().getDay() + 6) % 7;
+  var pac = MotorRitmo.pacingSemanaPorTerritorio(MotorRitmo.ALVO_F1, horas, diaIdx);
+  var PILL = { done: '✓ feito', ahead: 'adiantado', ontrack: 'no ritmo', behind: 'atrasado' };
+  var totalDone = 0, totalAlvo = 0;
+  var html = Object.keys(MotorRitmo.ALVO_F1).map(function (k) {
+    var p = pac[k]; totalDone += p.done; totalAlvo += p.target;
+    return '<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:.8rem">' +
+      '<span>' + esc(TERR_LABEL[k] || k) + '</span>' +
+      '<span><span class="meta">' + p.done.toFixed(1).replace('.', ',') + '/' + p.target.toFixed(1).replace('.', ',') + 'h</span> ' +
+      '<span class="pill ' + p.status + '">' + PILL[p.status] + '</span></span></div>' +
+      '<div class="pbar"><div class="pfill" style="width:' + p.pct + '%"></div><div class="pmark" style="left:' + p.expPct + '%"></div></div></div>';
+  }).join('');
+  var pTot = MotorRitmo.pacing(totalAlvo, totalDone, diaIdx + 1, 7);
+  html = '<div style="display:flex;justify-content:space-between;font-size:.84rem;margin-bottom:2px"><b>Total: ' +
+    totalDone.toFixed(1).replace('.', ',') + '/' + totalAlvo.toFixed(1).replace('.', ',') + 'h</b>' +
+    '<span class="pill ' + pTot.status + '">' + PILL[pTot.status] + '</span></div>' +
+    '<div class="pbar"><div class="pfill" style="width:' + pTot.pct + '%"></div><div class="pmark" style="left:' + pTot.expPct + '%"></div></div>' +
+    '<div style="border-top:1px solid var(--line);margin:10px 0 2px"></div>' + html;
+  $('horizontes').innerHTML = html;
+}
+var chLiq = null, chCal = null;
+function cssv(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+async function renderStats() {
+  if (!Store.ready) return;
+  var ten = await Store.all('itens');
+  var ss = await Store.all('sessoes');
+  // streak: dias consecutivos (até hoje) com sessão OU item
+  var dias = {};
+  ten.forEach(function (t) { dias[t.data] = 1; });
+  ss.forEach(function (s) { dias[s.data] = 1; });
+  var streak = 0, d = today();
+  while (dias[d]) { streak++; d = Seeds.addDias(d, -1); }
+  var g = agregaLiquido(ten);
+  var marcados = ten.filter(function (t) { return t.resposta !== 'BRANCO'; });
+  var tMedio = marcados.length ? marcados.reduce(function (a, t) { return a + (t.tempoMs || 0); }, 0) / marcados.length / 1000 : null;
+  var micros = await Store.all('microconteudos');
+  var prog = MotorRitmo.progressoPonderado(TERR_META.filter(function (t) { return t.peso > 0; }).map(function (t) {
+    var lst = micros.filter(function (m) { return m.territorio === t.id; });
+    return { id: t.id, peso: t.peso, concluidos: lst.filter(function (m) { return m.status === 'CONCLUIDO'; }).length, total: lst.length };
+  }));
+  var ex = MotorRitmo.examPacing(prog, semanaAtual() - 1, D.totalSemanas);
+  $('stTop').innerHTML =
+    '<span class="badge">🔥 streak <b>' + streak + 'd</b></span>' +
+    '<span class="badge">Líquido <b>' + MotorCebraspe.fmtPct(g.liq) + '</b> (' + g.total + ')</span>' +
+    '<span class="badge">t/item <b>' + (tMedio === null ? '—' : Math.round(tMedio) + 's') + '</b></span>' +
+    '<span class="badge">cobertura ponderada <b>' + prog.toFixed(1).replace('.', ',') + '%</b> <span class="pill ' + (ex.status === 'behind' ? 'behind' : ex.status === 'ahead' ? 'ahead' : 'ontrack') + '">' + ex.status + '</span></span>';
+  // heatmap 84 dias
+  var cells = '';
+  for (var i = 83; i >= 0; i--) {
+    var dd = Seeds.addDias(today(), -i);
+    var min = ss.filter(function (s) { return s.data === dd; }).reduce(function (a, s) { return a + s.minutos; }, 0);
+    var it = ten.filter(function (t) { return t.data === dd; }).length;
+    var carga = min + it * 2;
+    var nivel = carga === 0 ? '' : carga < 30 ? 'l1' : carga < 75 ? 'l2' : carga < 150 ? 'l3' : 'l4';
+    cells += '<i class="' + nivel + '" title="' + dd + '"></i>';
+  }
+  $('stHeat').innerHTML = cells;
+  // mapa de erros por taxonomia (lista SEMPRE renderiza — independe do Chart)
+  var porErro = {};
+  ten.forEach(function (t) { if (t.tipoErro) porErro[t.tipoErro] = (porErro[t.tipoErro] || 0) + 1; });
+  var chavesE = Object.keys(porErro).sort(function (a, b) { return porErro[b] - porErro[a]; });
+  $('stErros').innerHTML = chavesE.length ? chavesE.map(function (k) {
+    return '<div class="rowline"><span>' + k.replace(/_/g, ' ') + ' <small class="meta">' + esc(MotorCebraspe.TIPOS_ERRO[k]) + '</small></span><b>' + porErro[k] + '</b></div>';
+  }).join('') : '<span class="empty">Sem erros classificados ainda.</span>';
+  // gráficos
+  if (typeof Chart === 'undefined') return;
+  var semanas = {};
+  ten.forEach(function (t) {
+    var p = t.data.split('-');
+    var dt = new Date(+p[0], +p[1] - 1, +p[2], 12);
+    var wd = (dt.getDay() + 6) % 7; dt.setDate(dt.getDate() - wd);
+    var wk = ymd(dt);
+    (semanas[wk] = semanas[wk] || []).push(t);
+  });
+  var wks = Object.keys(semanas).sort();
+  var liqData = wks.map(function (w) { var a = agregaLiquido(semanas[w]); return a.liq === null ? null : +(a.liq * 100).toFixed(4); });
+  if (chLiq) chLiq.destroy();
+  chLiq = new Chart($('chLiq'), { type: 'line', data: { labels: wks.map(function (w) { return w.slice(5).split('-').reverse().join('/'); }), datasets: [
+    { label: 'Líquido (%)', data: liqData, borderColor: cssv('--p'), backgroundColor: cssv('--p'), borderWidth: 2, pointRadius: 4, spanGaps: true },
+    { label: 'CP1 60%', data: wks.map(function () { return 60; }), borderColor: cssv('--ink3'), borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 }
+  ] }, options: { responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: cssv('--ink2'), boxWidth: 12, font: { size: 10 } } } },
+    scales: { x: { grid: { display: false }, ticks: { color: cssv('--ink3'), font: { size: 9 } } },
+              y: { suggestedMin: -50, suggestedMax: 100, grid: { color: cssv('--line') }, ticks: { color: cssv('--ink3'), font: { size: 9 } } } } } });
+  var diag = MotorCebraspe.diagnosticoCalibracao(ten);
+  var reais = [1, 2, 3, 4, 5].map(function (c) { var v = diag.niveis[c]; return v.real === null ? null : +(v.real * 100).toFixed(4); });
+  var esper = [1, 2, 3, 4, 5].map(function (c) { return MotorCebraspe.FAIXA_CONFIANCA[c] * 100; });
+  if (chCal) chCal.destroy();
+  chCal = new Chart($('chCal'), { type: 'bar', data: { labels: ['1', '2', '3', '4', '5'], datasets: [
+    { label: 'Real (%)', data: reais, backgroundColor: cssv('--p'), borderRadius: 4, maxBarThickness: 30 },
+    { label: 'Esperado (%)', type: 'line', data: esper, borderColor: cssv('--ink3'), borderDash: [5, 4], borderWidth: 2, pointRadius: 3 }
+  ] }, options: { responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: cssv('--ink2'), boxWidth: 12, font: { size: 10 } } } },
+    scales: { x: { grid: { display: false }, ticks: { color: cssv('--ink3') } },
+              y: { min: 0, max: 100, grid: { color: cssv('--line') }, ticks: { color: cssv('--ink3'), font: { size: 9 } } } } } });
+}
+
 // ═══════════ FASE 8 — SRS (§12.6) ═══════════
 async function renderRevisoes() {
   if (!Store.ready) return;
@@ -2260,6 +2427,7 @@ window.executarImport = async function () {
 function renderAll() {
   renderHeader(); renderBadges(); renderMissao();
   renderProximo(); renderSemanaPlano(); renderTerritorios(); renderItens(); renderDiscursivas(); renderRevisoes();
+  renderSessoesHoje(); renderHorizontes(); renderStats();
   $('cfgProva').value = D.provaDate;
 }
 
@@ -2279,6 +2447,9 @@ function wireUI() {
   $('btnImport').addEventListener('click', function () { abrirImport(); });
   $('btnNovaDisc').addEventListener('click', function () { abrirEditorDisc(null); });
   $('btnRetro').addEventListener('click', function () { executarRetro(); });
+  var selS = $('sTerr');
+  FRENTES.forEach(function (f) { var o = document.createElement('option'); o.value = f; o.textContent = TERR_LABEL[f] || f; selS.appendChild(o); });
+  $('btnSessao').addEventListener('click', function () { registrarSessao(); });
   $('cfgTeto').addEventListener('change', function () {
     var v = Math.max(1, Math.min(30, +$('cfgTeto').value || 8));
     D.reviewBudget = v; save(); renderRevisoes(); toast('Teto: ' + v + '/dia.');

@@ -24,7 +24,8 @@ O Claude lê este arquivo + `docs/` e sabe onde parou.
 - [x] **Fase 6:** Simulado — completo 3h30/parcial/mini (duração proporcional), composição pelo blueprint via montarSimulado puro (faltantes reportados, sem corte silencioso), zero feedback durante, hard stop → restante vira BRANCO automático, correção final (líquido/pontos/Brier/diagnóstico/por-território) com taxonomia inline · **gates: itens 17/17 + e2e fase-6 11/11 + regressões**
 - [x] **Fase 7:** Discursivas — editor com bloqueio absoluto (40 linhas F1 → 80 F2; 1 linha=70 chars, premissa), cronômetro, autosave 10s local/30s nuvem, versionamento imutável com paiId, diff LCS entre versões, modo às cegas, grade de autoavaliação (4 critérios 0-10 → nota média) · **gates: puros 27/27 + e2e fase-7 11/11 + regressões**
 - [x] **Fase 8:** SRS — D+1/7/15/30 + react, urgência atraso×10+pesoStage, Difícil=+2d sem regredir, dobra ~15% em DIR/LOG/COS/EEC, teto diário ajustável, reconstrução retroativa sem estourar teto, gancho micro→EM_ESTUDO/CONCLUIDO agenda D+1, badge na nav · **gates: puros 42/42 + e2e fase-8 11/11 + regressões**
-- [ ] **Fase 9 (próxima):** Início completo (horizontes realizado×planejado por território, pílulas, líquido em destaque) + Stats (heatmap, streaks, curva do líquido, gráfico de calibração, mapa de erros por taxonomia, progresso ponderado)
+- [x] **Fase 9:** Registro de sessões (frente+minutos+desfazer) · horizontes por território com paceBar/pmark/pílulas (pacing herdado) e total da semana · Stats: streak, heatmap 84d, curva semanal do líquido (ref CP1 60%), calibração real×esperado, mapa de erros por taxonomia, tempo médio/item, cobertura ponderada + examPacing · charts re-renderizam ao abrir o pane · **gates: e2e fase-9 13/13 + regressões**
+- [ ] **Fase 10 (próxima):** Checkpoints — CP0-CP4 com semáforo por território lendo dados reais (avaliaCheckpoint) + gatilho automático da Econometria (§9.4)
 - [ ] Fases 7–12 conforme §14 da spec
 
 ### Notas para a Fase 4
