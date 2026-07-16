@@ -209,9 +209,18 @@ nav button.active{color:var(--p);font-weight:700}
 
     <!-- ITENS -->
     <section class="pane" id="pane-itens">
-      <div class="card"><h2>Itens Certo/Errado</h2>
-        <p class="empty">Chega na Fase 5: treino e revisão com trava de confiança 1–5, taxonomia de erros e fila de reteste. Fluxo: ler → declarar confiança → responder C/E/Branco → classificar erro.</p>
+      <div class="card"><h2>Itens Certo/Errado <span class="hint">+1,00 · −0,50 · 0 — marque só com p &gt; 33,33%</span></h2>
+        <div class="badges" id="itensBadges" style="margin:2px 0 10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn small" id="btnTreino">▶ Treinar</button>
+          <button class="btn sec small" id="btnReteste">🔁 Reteste <span id="rtCount"></span></button>
+          <button class="btn sec small" id="btnNovoItem">＋ Cadastrar</button>
+          <button class="btn sec small" id="btnImport">📥 Importar lote</button>
+        </div>
+        <label style="font-size:.72rem;color:var(--ink2)">Filtrar treino por território</label>
+        <select id="fTerrItens" style="margin-top:4px"><option value="">Todos</option></select>
       </div>
+      <div class="card"><h2>Banco de questões</h2><div id="bancoResumo" class="empty">—</div></div>
     </section>
 
     <!-- REVISÕES -->
@@ -249,6 +258,7 @@ nav button.active{color:var(--p);font-weight:700}
 </div>
 <div class="toast" id="toast"></div>
 <div class="modalback" id="microBack"><div class="sheet" id="microSheet"></div></div>
+<div class="modalback" id="itemBack"><div class="sheet" id="itemSheet"></div></div>
 
 <script>
 /*<motor-cebraspe>*/
@@ -557,7 +567,7 @@ else root.MotorRitmo = M;
 'use strict';
 
 var SK = 'bcb1';
-var SCHEMA = {
+var SCHEMA_V1 = {
   microconteudos: '&codigo, territorio, prioridade, status, ordem',
   sessoes:        '++id, data, territorio, createdAt',
   itens:          '++id, data, microcodigo, territorio, loteId, correto, tipoErro, createdAt',
@@ -570,13 +580,17 @@ var SCHEMA = {
   streaks:        '&key',
   snapshots:      '++id, &weekKey'
 };
+// v2 (Fase 5): banco de questões C/E — enunciado+gabarito moram aqui;
+// 'itens' continua sendo o registro de TENTATIVAS (com bancoId livre).
+var SCHEMA_V2 = { banco: '++id, microcodigo, territorio, createdAt' };
+var SCHEMA = Object.assign({}, SCHEMA_V1, SCHEMA_V2);
 var PK = {
   microconteudos: 'codigo', checkpoints: 'id', cronograma: 'semana',
   settings: 'key', streaks: 'key',
   sessoes: 'id', itens: 'id', lotes: 'id', discursivas: 'id',
-  revisoes: 'id', snapshots: 'id'
+  revisoes: 'id', snapshots: 'id', banco: 'id'
 };
-var AUTO = { sessoes: 1, itens: 1, lotes: 1, discursivas: 1, revisoes: 1, snapshots: 1 };
+var AUTO = { sessoes: 1, itens: 1, lotes: 1, discursivas: 1, revisoes: 1, snapshots: 1, banco: 1 };
 
 var Store = (function () {
   var mode = null, db = null, ready = false;
@@ -593,7 +607,8 @@ var Store = (function () {
     if (typeof Dexie !== 'undefined' && typeof indexedDB !== 'undefined') {
       try {
         db = new Dexie('bcbDB');
-        db.version(1).stores(SCHEMA);
+        db.version(1).stores(SCHEMA_V1);
+        db.version(2).stores(SCHEMA_V2); // upgrade automático; v1 intocada
         await db.open();
         mode = 'idb';
       } catch (e) { db = null; mode = 'ls'; }
@@ -973,6 +988,60 @@ function proximoArquivo(micros) {
   return fila.length ? fila[0] : null;
 }
 
+// ── Fase 5: importador de lote (§12.3, decisão "digitar + importar") ────────
+// Aceita: (a) JSON array [{enunciado, gabarito, microcodigo, fonte?, comentario?}]
+// ou (b) linhas "MICROCODIGO | C ou E | enunciado | fonte(opcional)".
+// Puro: valida contra codigosValidos e devolve {ok:[], erros:[{linha, motivo}]}.
+function parseImport(texto, codigosValidos) {
+  var ok = [], erros = [];
+  function valida(q, ref) {
+    if (!q || typeof q.enunciado !== 'string' || q.enunciado.trim().length < 10)
+      return erros.push({ linha: ref, motivo: 'enunciado ausente ou curto demais (<10 chars)' });
+    if (q.gabarito !== 'C' && q.gabarito !== 'E')
+      return erros.push({ linha: ref, motivo: 'gabarito deve ser C ou E' });
+    if (!codigosValidos[q.microcodigo])
+      return erros.push({ linha: ref, motivo: 'microcódigo desconhecido: ' + q.microcodigo });
+    ok.push({ enunciado: q.enunciado.trim(), gabarito: q.gabarito, microcodigo: q.microcodigo,
+              territorio: codigosValidos[q.microcodigo],
+              fonte: (q.fonte || '').trim() || null, comentario: (q.comentario || '').trim() || null });
+  }
+  var t = (texto || '').trim();
+  if (!t) return { ok: ok, erros: [{ linha: 0, motivo: 'vazio' }] };
+  if (t[0] === '[') {
+    try {
+      var arr = JSON.parse(t);
+      if (!Array.isArray(arr)) throw 0;
+      arr.forEach(function (q, i) { valida(q, i + 1); });
+    } catch (e) { erros.push({ linha: 0, motivo: 'JSON inválido' }); }
+    return { ok: ok, erros: erros };
+  }
+  t.split('\n').forEach(function (ln, i) {
+    ln = ln.trim();
+    if (!ln) return;
+    var p = ln.split('|').map(function (x) { return x.trim(); });
+    if (p.length < 3) return erros.push({ linha: i + 1, motivo: 'esperado MICROCODIGO | C/E | enunciado [| fonte]' });
+    valida({ microcodigo: p[0], gabarito: p[1].toUpperCase(), enunciado: p[2], fonte: p[3] || '' }, i + 1);
+  });
+  return { ok: ok, erros: erros };
+}
+
+// ── Fase 5: fila de reteste (§12.3 passo 5) ─────────────────────────────────
+// Regra: a ÚLTIMA tentativa da questão foi errada OU mal calibrada → reteste.
+// Erro sem taxonomia não sai da fila (a UI trava, mas a regra vale aqui também).
+function filaReteste(banco, tentativas) {
+  var ultimas = {};
+  tentativas.forEach(function (t) {
+    if (t.bancoId == null) return;
+    var u = ultimas[t.bancoId];
+    if (!u || (t.createdAt || 0) >= (u.createdAt || 0)) ultimas[t.bancoId] = t;
+  });
+  return banco.filter(function (q) {
+    var u = ultimas[q.id];
+    if (!u) return false;
+    return u.correto === false || !!u.flagCalibracao || (u.correto === false && !u.tipoErro);
+  });
+}
+
 async function seedAll(Store) {
   var micros = buildMicros();
 
@@ -1009,7 +1078,8 @@ async function seedAll(Store) {
 var M = {
   SEED_VERSION: SEED_VERSION, PRIORIDADE_ORDEM: PRIORIDADE_ORDEM, STATUS: STATUS,
   NATUREZA: NATUREZA, buildMicros: buildMicros, buildCronograma: buildCronograma,
-  SEED_CHECKPOINTS: SEED_CHECKPOINTS, proximoArquivo: proximoArquivo, seedAll: seedAll
+  SEED_CHECKPOINTS: SEED_CHECKPOINTS, proximoArquivo: proximoArquivo, seedAll: seedAll,
+  parseImport: parseImport, filaReteste: filaReteste
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = M;
 else root.Seeds = M;
@@ -1283,12 +1353,14 @@ function renderHeader() {
   else av.textContent = (D.userName || 'A').slice(0, 1).toUpperCase();
   $('miSyncV').textContent = Cloud.status();
 }
-function renderBadges() {
+async function renderBadges() {
   var dE = daysTo(D.editalDate), dP = daysTo(D.provaDate);
+  var liq = '—';
+  if (Store.ready) liq = MotorCebraspe.fmtPct(agregaLiquido(await Store.all('itens')).liq);
   $('badges').innerHTML =
     '<span class="badge' + (dE <= 60 ? ' warn' : '') + '">Edital em <b>' + dE + 'd</b> (03/01/27)</span>' +
     '<span class="badge">Prova est. em <b>' + dP + 'd</b></span>' +
-    '<span class="badge">Líquido acumulado: <b>—</b> <small>(Fase 5)</small></span>';
+    '<span class="badge">Líquido acumulado: <b>' + liq + '</b></span>';
 }
 function renderMissao() {
   var dow = (new Date().getDay() + 6) % 7;
@@ -1341,14 +1413,16 @@ async function renderSemanaPlano() {
 async function renderTerritorios() {
   if (!Store.ready) return;
   var micros = await Store.all('microconteudos');
+  var liq = await liquidoPorTerritorio();
   $('terrList').innerHTML = TERR_META.map(function (t) {
     var lista = micros.filter(function (m) { return m.territorio === t.id; });
     var done = lista.filter(function (m) { return m.status === 'CONCLUIDO'; }).length;
     var and = lista.filter(function (m) { return m.status === 'GERADO' || m.status === 'EM_ESTUDO'; }).length;
     var pct = lista.length ? Math.round(done / lista.length * 100) : 0;
+    var l = liq[t.id];
     return '<div class="rowline terr-row" onclick="openTerr(\'' + t.id + '\')"><div><b>' + esc(t.nome) + '</b>' +
       '<div class="meta">peso ' + t.peso + ' · ' + done + '/' + lista.length + ' concluídos (' + pct + '%)' + (and ? ' · ' + and + ' em andamento' : '') + '</div></div>' +
-      '<span class="chip">líquido — <small>(Fase 5)</small></span></div>';
+      '<span class="chip">líquido <b>' + (l ? MotorCebraspe.fmtPct(l.liq) : '—') + '</b>' + (l ? ' <small>(' + l.total + ')</small>' : '') + '</span></div>';
   }).join('');
 }
 
@@ -1379,6 +1453,9 @@ async function renderTerrDetail() {
     .sort(ordenaFila);
   var done = micros.filter(function (m) { return m.status === 'CONCLUIDO'; }).length;
   var natureza = micros.length ? (micros[0].natureza || '—') : '—';
+  var tenT = (await Store.all('itens')).filter(function (x) { return x.territorio === terrAtual; });
+  var lT = agregaLiquido(tenT);
+  var diag = MotorCebraspe.diagnosticoCalibracao(tenT);
   $('terrDetail').innerHTML =
     '<button class="backbtn" onclick="backTerr()">← Territórios</button>' +
     '<div class="card"><h2>' + esc(meta.nome) + '</h2>' +
@@ -1386,7 +1463,9 @@ async function renderTerrDetail() {
     '<span class="badge">peso <b>' + meta.peso + '</b></span>' +
     '<span class="badge">' + esc(natureza) + '</span>' +
     '<span class="badge"><b>' + done + '/' + micros.length + '</b> concluídos</span>' +
-    '<span class="badge">líquido — <small>(Fase 5)</small></span></div></div>' +
+    '<span class="badge">líquido <b>' + MotorCebraspe.fmtPct(lT.liq) + '</b> <small>(' + lT.total + ' itens)</small></span>' +
+    (lT.total >= 10 && diag.diag !== 'calibrado' ? '<span class="badge warn">⚠ ' + diag.diag + (terrAtual === 'FINANCAS' && diag.diag === 'superconfiante' ? ' — risco nº 5 do perfil' : '') + '</span>' : '') +
+    '</div></div>' +
     '<div class="card"><h2>Microconteúdos <span class="hint">ordem da fila de geração</span></h2>' +
     micros.map(function (m) {
       return '<div class="rowline micro-row" onclick="openMicro(\'' + m.codigo + '\')">' +
@@ -1423,8 +1502,18 @@ window.openMicro = async function (cod) {
     '<div style="display:flex;gap:6px"><input type="url" id="mDrive" placeholder="https://…" value="' + esc(m.driveUrl || '') + '">' +
     '<button class="btn small" onclick="salvarDrive(\'' + cod + '\')">Salvar</button></div>' +
     (m.driveUrl ? '<div style="margin-top:6px"><a href="' + esc(m.driveUrl) + '" target="_blank" rel="noopener">📄 Abrir no Drive</a></div>' : '') +
-    links(m.prereqs, 'Pré-requisitos') + links(m.sucessores, 'Sucessores') +
-    '<label>Itens deste microconteúdo</label><p class="empty">Histórico e "gerar lote" chegam na Fase 5.</p>' +
+    links(m.prereqs, 'Pré-requisitos') + links(m.sucessores, 'Sucessores');
+  var tenM = (await Store.all('itens')).filter(function (x) { return x.microcodigo === cod; });
+  var qsM = (await Store.all('banco')).filter(function (q) { return q.microcodigo === cod; });
+  var lM = agregaLiquido(tenM);
+  $('microSheet').innerHTML +=
+    '<label>Itens deste microconteúdo</label>' +
+    '<div class="badges" style="margin:2px 0 6px">' +
+    '<span class="badge">' + qsM.length + ' no banco</span>' +
+    '<span class="badge">' + lM.total + ' respondidos · líquido <b>' + MotorCebraspe.fmtPct(lM.liq) + '</b></span></div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+    (qsM.length ? '<button class="btn small" onclick="fecharMicro();gerarLoteMicro(\'' + cod + '\')">▶ Gerar lote (' + qsM.length + ')</button>' : '') +
+    '<button class="btn sec small" onclick="fecharMicro();abrirCadastro(\'' + cod + '\')">＋ Cadastrar questão</button></div>' +
     '<button class="btn sec" style="margin-top:12px" onclick="fecharMicro()">Fechar</button>';
   $('microBack').classList.add('open');
 };
@@ -1451,9 +1540,226 @@ window.salvarDrive = async function (cod) {
   toast(v ? 'Link do Drive salvo.' : 'Link removido.');
 };
 function renderSyncStatus() { var el = $('miSyncV'); if (el) el.textContent = Cloud.status(); }
+
+// ═══════════ FASE 5 — ITENS C/E (§12.3) ═══════════
+// Fluxo TRAVADO: ler → confiança 1-5 (não muda depois) → C/E/Branco →
+// se errou, taxonomia obrigatória → fila de reteste. Score sempre derivado.
+function agregaLiquido(tentativas) {
+  var a = 0, e = 0, t = 0;
+  tentativas.forEach(function (x) { t++; if (x.correto === true) a++; else if (x.correto === false) e++; });
+  return { acertos: a, erros: e, total: t, liq: MotorCebraspe.liquido(a, e, t) };
+}
+async function liquidoPorTerritorio() {
+  var ten = await Store.all('itens');
+  var por = {};
+  ten.forEach(function (x) {
+    if (!por[x.territorio]) por[x.territorio] = [];
+    por[x.territorio].push(x);
+  });
+  var out = {};
+  Object.keys(por).forEach(function (k) { out[k] = agregaLiquido(por[k]); });
+  out._global = agregaLiquido(ten);
+  return out;
+}
+async function renderItens() {
+  if (!Store.ready) return;
+  var banco = await Store.all('banco');
+  var ten = await Store.all('itens');
+  var g = agregaLiquido(ten);
+  var brier = MotorCebraspe.brier(ten);
+  $('itensBadges').innerHTML =
+    '<span class="badge">Líquido <b>' + MotorCebraspe.fmtPct(g.liq) + '</b></span>' +
+    '<span class="badge">' + g.total + ' respondidos <small>(bruto ' + MotorCebraspe.fmtPct(MotorCebraspe.bruto(g.acertos, g.total)) + ')</small></span>' +
+    '<span class="badge">Brier <b>' + (brier === null ? '—' : MotorCebraspe.fmt4(brier)) + '</b></span>';
+  var rt = Seeds.filaReteste(banco, ten);
+  $('rtCount').textContent = rt.length ? '(' + rt.length + ')' : '';
+  var porT = {};
+  banco.forEach(function (q) { porT[q.territorio] = (porT[q.territorio] || 0) + 1; });
+  $('bancoResumo').innerHTML = banco.length
+    ? Object.keys(porT).sort().map(function (t) {
+        return '<div class="rowline"><span>' + esc(TERR_LABEL[t] || t) + '</span><b>' + porT[t] + ' questões</b></div>';
+      }).join('')
+    : '<span class="empty">Banco vazio. Cadastre à mão ou importe um lote (TEC/Cebraspe/ANPEC transcritos).</span>';
+  var sel = $('fTerrItens');
+  if (sel.options.length <= 1) {
+    TERR_META.forEach(function (t) {
+      var o = document.createElement('option'); o.value = t.id; o.textContent = t.nome; sel.appendChild(o);
+    });
+  }
+}
+
+// ── sessão de treino/reteste ────────────────────────────────────────────────
+var sessao = null; // {fila:[questões], idx, loteId, modo, confianca, respondido, acertos, erros, brancos, escore}
+async function iniciarSessao(modo) {
+  var banco = await Store.all('banco');
+  var ten = await Store.all('itens');
+  var fila;
+  if (modo === 'reteste') {
+    fila = Seeds.filaReteste(banco, ten);
+    if (!fila.length) { toast('Fila de reteste vazia. 👌'); return; }
+  } else {
+    var terr = $('fTerrItens').value;
+    fila = terr ? banco.filter(function (q) { return q.territorio === terr; }) : banco.slice();
+    if (!fila.length) { toast('Sem questões' + (terr ? ' neste território' : ' no banco') + ' — cadastre ou importe.'); return; }
+    // menos respondidas primeiro; embaralha dentro do grupo
+    var vezes = {};
+    ten.forEach(function (t) { if (t.bancoId != null) vezes[t.bancoId] = (vezes[t.bancoId] || 0) + 1; });
+    fila.sort(function (a, b) { return (vezes[a.id] || 0) - (vezes[b.id] || 0) || Math.random() - 0.5; });
+  }
+  var lote = await Store.add('lotes', { modo: modo, data: today() });
+  sessao = { fila: fila, idx: 0, loteId: lote.id, modo: modo,
+             confianca: null, respondido: null, t0: Date.now(),
+             acertos: 0, erros: 0, brancos: 0, escore: 0, flags: 0 };
+  renderItemAtual();
+  $('itemBack').classList.add('open');
+}
+function renderItemAtual() {
+  var s = sessao, q = s.fila[s.idx];
+  var passo = s.confianca === null ? 1 : s.respondido === null ? 2 : 3;
+  var html =
+    '<div class="sub">' + (s.modo === 'reteste' ? '🔁 Reteste' : '▶ Treino') + ' · item ' + (s.idx + 1) + '/' + s.fila.length +
+    ' · ' + esc(TERR_LABEL[q.territorio] || q.territorio) + ' · ' + esc(q.microcodigo) +
+    (q.fonte ? ' · ' + esc(q.fonte) : '') + '</div>' +
+    '<p style="font-size:.92rem;margin:6px 0 12px;white-space:pre-wrap">' + esc(q.enunciado) + '</p>';
+  if (passo === 1) {
+    html += '<label>1º · Declare sua confiança (trava — não muda depois)</label><div class="stbtns">' +
+      [1, 2, 3, 4, 5].map(function (c) {
+        return '<button onclick="declararConfianca(' + c + ')">' + c + ' <small>~' + Math.round(MotorCebraspe.FAIXA_CONFIANCA[c] * 100) + '%</small></button>';
+      }).join('') + '</div>' +
+      '<p class="empty">EV(marcar) &gt; 0 só com p &gt; 33,33%. Confiança 1–2 → o racional é BRANCO.</p>';
+  } else if (passo === 2) {
+    html += '<label>Confiança declarada: <b>' + s.confianca + '</b> · 2º · Responda</label><div class="stbtns">' +
+      '<button onclick="responder(\'C\')">CERTO</button>' +
+      '<button onclick="responder(\'E\')">ERRADO</button>' +
+      '<button onclick="responder(\'BRANCO\')">BRANCO</button></div>';
+  } else {
+    var r = s.respondido;
+    html += '<div class="badges">' +
+      '<span class="badge" style="background:' + (r.correto === true ? 'var(--okl)' : r.correto === false ? 'var(--badl)' : 'var(--warnl)') + ';border-color:transparent"><b>' +
+      (r.correto === true ? '✔ Certo' : r.correto === false ? '✘ Errado' : '— Branco') + '</b> · gabarito ' + q.gabarito + ' · ' + (r.score > 0 ? '+' : '') + r.score.toFixed(2).replace('.', ',') + '</span>' +
+      (r.flagCalibracao ? '<span class="badge warn">⚠ ' + (r.flagCalibracao === 'MARCACAO_BAIXA_CONFIANCA' ? 'marcou com confiança ≤2' : 'absteve com confiança ≥3') + '</span>' : '') +
+      '</div>' + (q.comentario ? '<p class="empty" style="margin-top:6px">' + esc(q.comentario) + '</p>' : '');
+    if (r.correto === false && !r.tipoErro) {
+      html += '<label>3º · Classifique o erro (obrigatório — sem isso o item não sai da fila)</label><div class="stbtns" style="flex-direction:column;align-items:stretch">' +
+        Object.keys(MotorCebraspe.TIPOS_ERRO).map(function (k) {
+          return '<button style="text-align:left" onclick="classificarErro(\'' + k + '\')"><b>' + k.replace(/_/g, ' ') + '</b> — <small>' + esc(MotorCebraspe.TIPOS_ERRO[k]) + '</small></button>';
+        }).join('') + '</div>';
+    } else {
+      html += '<button class="btn" style="margin-top:12px" onclick="proximoItem()">' + (s.idx + 1 < s.fila.length ? 'Próximo item' : 'Encerrar lote') + '</button>';
+    }
+  }
+  html += '<button class="btn sec" style="margin-top:10px" onclick="abandonarSessao()">Sair do lote</button>';
+  $('itemSheet').innerHTML = html;
+}
+window.declararConfianca = function (c) { sessao.confianca = c; sessao.t0 = Date.now(); renderItemAtual(); };
+window.responder = async function (resp) {
+  var s = sessao, q = s.fila[s.idx];
+  var r = MotorCebraspe.corrigirItem(resp, q.gabarito);
+  var flag = MotorCebraspe.erroCalibracaoItem(resp, s.confianca);
+  if (r.correto === true) s.acertos++; else if (r.correto === false) s.erros++; else s.brancos++;
+  s.escore += r.score; if (flag) s.flags++;
+  var rec = await Store.add('itens', {
+    data: today(), bancoId: q.id, microcodigo: q.microcodigo, territorio: q.territorio,
+    loteId: s.loteId, resposta: resp, correto: r.correto, confianca: s.confianca,
+    tempoMs: Date.now() - s.t0, tipoErro: null, score: r.score, flagCalibracao: flag
+  });
+  Cloud.schedulePush();
+  s.respondido = { id: rec.id, correto: r.correto, score: r.score, flagCalibracao: flag, tipoErro: null };
+  renderItemAtual();
+};
+window.classificarErro = async function (tipo) {
+  if (!MotorCebraspe.tipoErroValido(tipo)) return;
+  await Store.update('itens', sessao.respondido.id, { tipoErro: tipo });
+  Cloud.schedulePush();
+  sessao.respondido.tipoErro = tipo;
+  renderItemAtual();
+};
+window.proximoItem = function () {
+  var s = sessao;
+  if (s.idx + 1 < s.fila.length) { s.idx++; s.confianca = null; s.respondido = null; s.t0 = Date.now(); renderItemAtual(); return; }
+  var liq = MotorCebraspe.liquido(s.acertos, s.erros, s.fila.length);
+  $('itemSheet').innerHTML =
+    '<h3>Lote encerrado</h3>' +
+    '<div class="badges" style="margin:8px 0">' +
+    '<span class="badge">Líquido <b>' + MotorCebraspe.fmtPct(liq) + '</b></span>' +
+    '<span class="badge">✔ ' + s.acertos + ' · ✘ ' + s.erros + ' · — ' + s.brancos + '</span>' +
+    '<span class="badge">Pontos ' + (s.escore > 0 ? '+' : '') + s.escore.toFixed(2).replace('.', ',') + '</span>' +
+    (s.flags ? '<span class="badge warn">⚠ ' + s.flags + ' erro(s) de calibração</span>' : '') + '</div>' +
+    '<p class="empty">Errados e mal calibrados entraram na fila de reteste.</p>' +
+    '<button class="btn" style="margin-top:10px" onclick="fecharItem()">Fechar</button>';
+  sessao = null;
+  renderItens(); renderBadges(); renderTerritorios();
+};
+window.abandonarSessao = function () { sessao = null; fecharItem(); renderItens(); renderBadges(); };
+window.fecharItem = function () { $('itemBack').classList.remove('open'); };
+window.gerarLoteMicro = async function (cod) {
+  var banco = (await Store.all('banco')).filter(function (q) { return q.microcodigo === cod; });
+  if (!banco.length) { toast('Sem questões deste micro no banco.'); return; }
+  var lote = await Store.add('lotes', { modo: 'treino', data: today() });
+  sessao = { fila: banco, idx: 0, loteId: lote.id, modo: 'treino',
+             confianca: null, respondido: null, t0: Date.now(),
+             acertos: 0, erros: 0, brancos: 0, escore: 0, flags: 0 };
+  goTab('itens');
+  renderItemAtual();
+  $('itemBack').classList.add('open');
+};
+
+// ── cadastro manual + importador ────────────────────────────────────────────
+window.abrirCadastro = async function (microPre) {
+  var micros = (await Store.all('microconteudos')).filter(function (m) { return !m.dormente; }).sort(ordenaFila);
+  $('itemSheet').innerHTML =
+    '<h3>Cadastrar questão C/E</h3>' +
+    '<label>Microconteúdo</label><select id="qMicro">' + micros.map(function (m) {
+      return '<option value="' + m.codigo + '"' + (m.codigo === microPre ? ' selected' : '') + '>' + m.codigo + ' — ' + esc(m.nome) + '</option>';
+    }).join('') + '</select>' +
+    '<label>Enunciado (item literal, estilo Cebraspe)</label><textarea id="qEnun" rows="5" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px;font:inherit;color:inherit"></textarea>' +
+    '<label>Gabarito</label><div class="stbtns"><button id="qGabC" onclick="qGab=\'C\';this.classList.add(\'on\');document.getElementById(\'qGabE\').classList.remove(\'on\')">CERTO</button>' +
+    '<button id="qGabE" onclick="qGab=\'E\';this.classList.add(\'on\');document.getElementById(\'qGabC\').classList.remove(\'on\')">ERRADO</button></div>' +
+    '<label>Fonte (opcional)</label><input id="qFonte" placeholder="ex.: Cebraspe BCB 2024 · TEC #123">' +
+    '<label>Comentário/pegadinha (opcional — aparece no feedback)</label><input id="qCom">' +
+    '<button class="btn" style="margin-top:12px" onclick="salvarQuestao()">Salvar questão</button>' +
+    '<button class="btn sec" style="margin-top:8px" onclick="fecharItem()">Cancelar</button>';
+  window.qGab = null;
+  $('itemBack').classList.add('open');
+};
+window.salvarQuestao = async function () {
+  var en = $('qEnun').value.trim();
+  if (en.length < 10) { toast('Enunciado curto demais.'); return; }
+  if (window.qGab !== 'C' && window.qGab !== 'E') { toast('Defina o gabarito.'); return; }
+  var cod = $('qMicro').value;
+  var m = await Store.get('microconteudos', cod);
+  await Store.add('banco', { microcodigo: cod, territorio: m.territorio, enunciado: en,
+    gabarito: window.qGab, fonte: $('qFonte').value.trim() || null, comentario: $('qCom').value.trim() || null, favorita: false });
+  Cloud.schedulePush();
+  fecharItem(); renderItens();
+  toast('Questão salva no banco (' + cod + ').');
+};
+window.abrirImport = function () {
+  $('itemSheet').innerHTML =
+    '<h3>Importar lote</h3>' +
+    '<p class="empty">Formatos: JSON <code>[{"enunciado","gabarito","microcodigo","fonte"}]</code> ou 1 linha por item: <code>MAC-02 | E | texto do item | fonte</code></p>' +
+    '<textarea id="impTxt" rows="8" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px;font:ui-monospace,monospace;font-size:.78rem;color:inherit"></textarea>' +
+    '<button class="btn" style="margin-top:10px" onclick="executarImport()">Importar</button>' +
+    '<div id="impResult" style="margin-top:8px;font-size:.78rem"></div>' +
+    '<button class="btn sec" style="margin-top:8px" onclick="fecharItem()">Fechar</button>';
+  $('itemBack').classList.add('open');
+};
+window.executarImport = async function () {
+  var micros = await Store.all('microconteudos');
+  var validos = {};
+  micros.forEach(function (m) { if (!m.dormente) validos[m.codigo] = m.territorio; });
+  var r = Seeds.parseImport($('impTxt').value, validos);
+  for (var i = 0; i < r.ok.length; i++) await Store.add('banco', Object.assign({ favorita: false }, r.ok[i]));
+  if (r.ok.length) Cloud.schedulePush();
+  $('impResult').innerHTML =
+    '<b>' + r.ok.length + ' importadas</b>' +
+    (r.erros.length ? ' · <span style="color:var(--bad)">' + r.erros.length + ' rejeitadas:</span><br>' +
+      r.erros.slice(0, 8).map(function (e) { return 'linha ' + e.linha + ': ' + esc(e.motivo); }).join('<br>') : '');
+  renderItens();
+};
 function renderAll() {
   renderHeader(); renderBadges(); renderMissao();
-  renderProximo(); renderSemanaPlano(); renderTerritorios();
+  renderProximo(); renderSemanaPlano(); renderTerritorios(); renderItens();
   $('cfgProva').value = D.provaDate;
 }
 
@@ -1465,6 +1771,12 @@ function wireUI() {
   $('btnAvatar').addEventListener('click', function (e) { e.stopPropagation(); $('menu').classList.toggle('open'); });
   document.addEventListener('click', function () { $('menu').classList.remove('open'); });
   $('microBack').addEventListener('click', function (e) { if (e.target === $('microBack')) fecharMicro(); });
+  // itemBack NÃO fecha por backdrop: o fluxo travado (confiança→resposta→
+  // taxonomia) só sai pelos botões — sair no meio é decisão explícita.
+  $('btnTreino').addEventListener('click', function () { iniciarSessao('treino'); });
+  $('btnReteste').addEventListener('click', function () { iniciarSessao('reteste'); });
+  $('btnNovoItem').addEventListener('click', function () { abrirCadastro(); });
+  $('btnImport').addEventListener('click', function () { abrirImport(); });
   $('miTheme').addEventListener('click', function (e) { e.stopPropagation(); cycleTheme(); });
   $('miLogout').addEventListener('click', function () {
     if (Cloud.enabled) Cloud.signOut(); else toast('Modo local — não há sessão para sair.');

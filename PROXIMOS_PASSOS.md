@@ -20,7 +20,8 @@ O Claude lê este arquivo + `docs/` e sabe onde parou.
 - [x] **Fase 2:** `js/store.js` (dual idb/ls, API genérica, backup validado por app) + `js/seeds.js` (§8: 107 ativos + 8 dormentes c/ assert; §9: 35 semanas; §10: 6 checkpoints; `proximoArquivo()`) · **gate verde: `node tests/store.test.js` → 47/47** (+ regressão Fase 1 66/66)
 - [x] **Fase 3:** index.html novo (single-file, blocos inline + tests extraem do index) · Cloud/gate/onboarding/dark mode · sw.js bcb-v1 · firestore.rules prontas · **gates: motor 66/66 · store 47/47 · e2e navegador 16/16 (modo idb validado)**
 - [x] **Fase 4:** Territórios completos — drill-down (grid → território → sheet do micro), transição de status com geradoEm, driveUrl validado, prereqs navegáveis, push explícito à nuvem · **gates: 66/66 + 47/47 + e2e fase-4 12/12 + regressão e2e fase-3 16/16**
-- [ ] **Fase 5 (próxima):** Itens — treino/revisão com trava de confiança 1-5, taxonomia obrigatória no erro, fila de reteste, cadastro manual + importador de lote; líquido passa a alimentar Início/Territórios
+- [x] **Fase 5:** Itens C/E — banco de questões (tabela banco, Dexie v2), cadastro manual + importador (JSON e linhas, com relatório de rejeição), fluxo TRAVADO confiança→resposta→taxonomia, fila de reteste (última errada ou mal calibrada), líquido real no Início/Territórios/drill/micro + Brier + gerar lote por micro · **gates: 11/11 + 66/66 + 47/47 + e2e 17/17**
+- [ ] **Fase 6 (próxima):** Simulado 3h30 — cronômetro hard stop, composição pela proporção real do blueprint, zero feedback durante, limiar 33,33% visível, correção ao final (líquido/calibração/Brier/mapa de erros), itens→reteste, offline
 - [ ] Fases 4–12 conforme §14 da spec
 
 ### Notas para a Fase 4
