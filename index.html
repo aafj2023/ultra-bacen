@@ -225,8 +225,15 @@ nav button.active{color:var(--p);font-weight:700}
 
     <!-- REVISÕES -->
     <section class="pane" id="pane-rev">
-      <div class="card"><h2>Revisões (SRS)</h2>
-        <p class="empty">Chega na Fase 8: D+1 → D+7 → D+15 → D+30 + estágio react, teto diário, reconstrução retroativa e dobra de carga em Direito, Lógica, COSIF e Econometria.</p>
+      <div class="card"><h2>🔁 Fila de hoje <span class="hint">D+1·7·15·30 + react · dobra em DIR/LOG/COS/EEC</span></h2>
+        <div id="revHoje"><span class="empty">—</span></div>
+      </div>
+      <div class="card"><h2>Próximas (7 dias)</h2><div id="revProx" class="empty">—</div></div>
+      <div class="card"><h2>⚙ Teto e reconstrução</h2>
+        <label style="font-size:.72rem;color:var(--ink2)">Teto de revisões por dia</label>
+        <input type="number" id="cfgTeto" min="1" max="30" style="margin:4px 0 10px;max-width:120px">
+        <button class="btn sec small" id="btnRetro">🧩 Reconstrução retroativa</button>
+        <p class="empty" style="margin-top:8px">A reconstrução agenda revisões "react" para microconteúdos já estudados que estão sem revisão, distribuindo a partir de amanhã sem estourar o teto.</p>
       </div>
     </section>
 
@@ -1066,6 +1073,62 @@ function montarSimulado(banco, composicao, rnd) {
   return { fila: fila, faltantes: faltantes, totalFaltante: Object.keys(faltantes).reduce(function (s, k) { return s + faltantes[k]; }, 0) };
 }
 
+// ── Fase 8: SRS (§12.6) — máquina pura de revisão espaçada ──────────────────
+// Stages numéricos 1..4 = D+1/D+7/D+15/D+30 + stage 'react' (reativação).
+// Dobra do perfil (§3): territórios que evaporam sem ancoragem têm intervalos
+// ~15% mais curtos. 'Difícil' reagenda +2d SEM regredir (herdado do R+).
+var SRS_GAPS = { 1: 1, 2: 7, 3: 15, 4: 30 };
+var SRS_ULTIMO_STAGE = 4;
+var DOBRAR = ['DIREITO', 'LOGICA', 'COSIF', 'ECONOMETRIA'];
+function intervaloComDobra(dias, territorio) {
+  if (DOBRAR.indexOf(territorio) < 0) return dias;
+  return Math.max(1, Math.round(dias * 0.85));
+}
+// urgência: atraso domina (×10); react e stages precoces desempatam na frente
+function reviewUrgency(rev, hojeStr) {
+  var atraso = 0;
+  if (rev.dueDate && rev.dueDate < hojeStr) {
+    var a = rev.dueDate.split('-'), b = hojeStr.split('-');
+    atraso = Math.round((new Date(+b[0], +b[1] - 1, +b[2]) - new Date(+a[0], +a[1] - 1, +a[2])) / 86400000);
+  }
+  var pesoStage = rev.stage === 'react' ? 5 : (5 - (+rev.stage || 1));
+  return atraso * 10 + pesoStage;
+}
+function addDias(ymdStr, n) {
+  var p = ymdStr.split('-');
+  var d = new Date(+p[0], +p[1] - 1, +p[2], 12);
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+// resultado: 'ok' | 'dificil'. Intervalo ancorado em HOJE (dia da conclusão).
+function agendaRevisao(rev, resultado, hojeStr) {
+  if (resultado === 'dificil')
+    return { stage: rev.stage, dueDate: addDias(hojeStr, 2), status: 'pending' };
+  if (rev.stage === 'react') // promove direto (R+): próxima é o stage 2
+    return { stage: 2, dueDate: addDias(hojeStr, intervaloComDobra(SRS_GAPS[2], rev.territorio)), status: 'pending' };
+  var prox = (+rev.stage) + 1;
+  if (prox > SRS_ULTIMO_STAGE) return { stage: rev.stage, dueDate: null, status: 'done' };
+  return { stage: prox, dueDate: addDias(hojeStr, intervaloComDobra(SRS_GAPS[prox], rev.territorio)), status: 'pending' };
+}
+// reconstrução retroativa: distribui o backlog a partir de AMANHÃ sem estourar
+// o teto/dia (considerando as revisões já agendadas em ocupadosPorDia).
+function seedRetro(topicos, hojeStr, teto, ocupadosPorDia) {
+  ocupadosPorDia = ocupadosPorDia || {};
+  var out = [], dia = 1;
+  topicos.forEach(function (t) {
+    var d;
+    while (true) {
+      d = addDias(hojeStr, dia);
+      if ((ocupadosPorDia[d] || 0) < teto) break;
+      dia++;
+    }
+    ocupadosPorDia[d] = (ocupadosPorDia[d] || 0) + 1;
+    out.push({ territorio: t.territorio, label: t.label, topicId: t.topicId,
+               stage: 'react', dueDate: d, status: 'pending', origin: 'retro' });
+  });
+  return out;
+}
+
 // ── Fase 7: discursivas (§12.5) — funções puras ─────────────────────────────
 // 1 linha = 70 caracteres (premissa: folha padrão de prova; ver DECISOES).
 // Parágrafo vazio ocupa 1 linha. Bloqueio absoluto é da UI; a contagem é daqui.
@@ -1153,7 +1216,10 @@ var M = {
   SEED_CHECKPOINTS: SEED_CHECKPOINTS, proximoArquivo: proximoArquivo, seedAll: seedAll,
   parseImport: parseImport, filaReteste: filaReteste,
   BLUEPRINT_TERRITORIOS: BLUEPRINT_TERRITORIOS, montarSimulado: montarSimulado,
-  LINHA_CHARS: LINHA_CHARS, contarLinhas: contarLinhas, diffLinhas: diffLinhas
+  LINHA_CHARS: LINHA_CHARS, contarLinhas: contarLinhas, diffLinhas: diffLinhas,
+  SRS_GAPS: SRS_GAPS, SRS_ULTIMO_STAGE: SRS_ULTIMO_STAGE, DOBRAR: DOBRAR,
+  intervaloComDobra: intervaloComDobra, reviewUrgency: reviewUrgency,
+  agendaRevisao: agendaRevisao, seedRetro: seedRetro, addDias: addDias
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = M;
 else root.Seeds = M;
@@ -1599,6 +1665,7 @@ window.setMicroStatus = async function (cod, st) {
   if (st === 'GERADO' && !m.geradoEm) patch.geradoEm = today();
   await Store.update('microconteudos', cod, patch);
   Cloud.schedulePush(); // escrita fora do save() → push explícito (gotcha #5)
+  if (st === 'EM_ESTUDO' || st === 'CONCLUIDO') await agendarRevisaoDoMicro(m); // SRS D+1
   openMicro(cod);
   if (terrAtual) renderTerrDetail();
   renderProximo(); renderTerritorios();
@@ -1914,6 +1981,76 @@ window.classificarErroCorrecao = async function (id, tipo) {
   if (row) row.querySelector('select').outerHTML = '<span class="stchip st-GERADO">' + esc(tipo) + '</span>';
 };
 
+// ═══════════ FASE 8 — SRS (§12.6) ═══════════
+async function renderRevisoes() {
+  if (!Store.ready) return;
+  var revs = await Store.all('revisoes');
+  var h = today();
+  var pend = revs.filter(function (r) { return r.status === 'pending'; });
+  var hoje = pend.filter(function (r) { return r.dueDate && r.dueDate <= h; })
+    .sort(function (a, b) { return Seeds.reviewUrgency(b, h) - Seeds.reviewUrgency(a, h); });
+  var teto = D.reviewBudget || 8;
+  var visiveis = hoje.slice(0, teto);
+  $('revHoje').innerHTML = visiveis.length ? visiveis.map(function (r) {
+    var atraso = r.dueDate < h ? ' · <span style="color:var(--bad)">atrasada</span>' : '';
+    return '<div class="rowline"><div><b>' + esc(r.label) + '</b>' +
+      '<div class="meta">' + esc(TERR_LABEL[r.territorio] || r.territorio) + ' · ' +
+      (r.stage === 'react' ? 'react' : 'D+' + Seeds.SRS_GAPS[r.stage]) + atraso + '</div></div>' +
+      '<div style="display:flex;gap:6px;flex:none">' +
+      '<button class="btn small" onclick="concluirRevisao(' + r.id + ',\'ok\')">✓ OK</button>' +
+      '<button class="btn sec small" onclick="concluirRevisao(' + r.id + ',\'dificil\')">Difícil</button></div></div>';
+  }).join('') + (hoje.length > teto ? '<p class="empty" style="margin-top:6px">+' + (hoje.length - teto) + ' além do teto (' + teto + '/dia) — aparecem amanhã ou suba o teto.</p>' : '')
+    : '<span class="empty">Fila zerada. Revisão em dia = retenção protegida.</span>';
+  var prox = pend.filter(function (r) { return r.dueDate && r.dueDate > h && r.dueDate <= Seeds.addDias(h, 7); })
+    .sort(function (a, b) { return a.dueDate < b.dueDate ? -1 : 1; });
+  $('revProx').innerHTML = prox.length ? prox.map(function (r) {
+    return '<div class="rowline"><span>' + esc(r.label) + '</span><span class="meta">' + esc(r.dueDate.slice(5).split('-').reverse().join('/')) + ' · ' + (r.stage === 'react' ? 'react' : 'D+' + Seeds.SRS_GAPS[r.stage]) + '</span></div>';
+  }).join('') : '<span class="empty">Nada nos próximos 7 dias.</span>';
+  $('cfgTeto').value = teto;
+  // badge na nav
+  var navRev = document.querySelector('nav button[data-tab="rev"]');
+  if (navRev) navRev.innerHTML = '<span class="ic">🔁</span>Revisões' + (hoje.length ? ' (' + hoje.length + ')' : '');
+}
+window.concluirRevisao = async function (id, resultado) {
+  var r = await Store.get('revisoes', id);
+  if (!r) return;
+  var novo = Seeds.agendaRevisao(r, resultado, today());
+  await Store.update('revisoes', id, { stage: novo.stage, dueDate: novo.dueDate, status: novo.status,
+    lastScore: resultado, doneAt: novo.status === 'done' ? today() : null });
+  Cloud.schedulePush();
+  renderRevisoes();
+  toast(novo.status === 'done' ? 'Ciclo completo — tópico consolidado. ✅'
+    : resultado === 'dificil' ? 'Reagendada para +2 dias (stage mantido).'
+    : 'Próxima em ' + (r.stage === 'react' ? 'D+' + Seeds.intervaloComDobra(Seeds.SRS_GAPS[2], r.territorio) : 'D+' + Seeds.intervaloComDobra(Seeds.SRS_GAPS[Math.min(+r.stage + 1, 4)], r.territorio)) + '.');
+};
+// gancho estudo→revisão: primeira ida a EM_ESTUDO/CONCLUIDO agenda D+1
+async function agendarRevisaoDoMicro(m) {
+  var revs = await Store.all('revisoes');
+  if (revs.some(function (r) { return r.topicId === m.codigo && r.status === 'pending'; })) return;
+  var gap = Seeds.intervaloComDobra(1, m.territorio);
+  await Store.add('revisoes', { territorio: m.territorio, label: m.codigo + ' — ' + m.nome,
+    topicId: m.codigo, stage: 1, dueDate: Seeds.addDias(today(), gap), status: 'pending', origin: 'estudo' });
+  Cloud.schedulePush();
+}
+window.executarRetro = async function () {
+  var micros = await Store.all('microconteudos');
+  var revs = await Store.all('revisoes');
+  var comRev = {};
+  revs.forEach(function (r) { if (r.topicId) comRev[r.topicId] = true; });
+  var alvo = micros.filter(function (m) {
+    return !m.dormente && (m.status === 'EM_ESTUDO' || m.status === 'CONCLUIDO') && !comRev[m.codigo];
+  }).map(function (m) { return { territorio: m.territorio, label: m.codigo + ' — ' + m.nome, topicId: m.codigo }; });
+  if (!alvo.length) { toast('Nada a reconstruir — todo estudo já tem revisão.'); return; }
+  if (!confirm('Agendar ' + alvo.length + ' revisões "react" distribuídas a partir de amanhã (teto ' + (D.reviewBudget || 8) + '/dia)?')) return;
+  var ocupados = {};
+  revs.forEach(function (r) { if (r.status === 'pending' && r.dueDate) ocupados[r.dueDate] = (ocupados[r.dueDate] || 0) + 1; });
+  var novas = Seeds.seedRetro(alvo, today(), D.reviewBudget || 8, ocupados);
+  for (var i = 0; i < novas.length; i++) await Store.add('revisoes', novas[i]);
+  Cloud.schedulePush(); // escrita em lote fora do save() (gotcha #5)
+  renderRevisoes();
+  toast(novas.length + ' revisões reconstruídas.');
+};
+
 // ═══════════ FASE 7 — DISCURSIVAS (§12.5) ═══════════
 // Versionamento IMUTÁVEL: submeter = registro novo (paiId encadeia versões).
 // Limite: 40 linhas até a semana 10, 80 depois. Autosave: rascunho no
@@ -2122,7 +2259,7 @@ window.executarImport = async function () {
 };
 function renderAll() {
   renderHeader(); renderBadges(); renderMissao();
-  renderProximo(); renderSemanaPlano(); renderTerritorios(); renderItens(); renderDiscursivas();
+  renderProximo(); renderSemanaPlano(); renderTerritorios(); renderItens(); renderDiscursivas(); renderRevisoes();
   $('cfgProva').value = D.provaDate;
 }
 
@@ -2141,6 +2278,11 @@ function wireUI() {
   $('btnNovoItem').addEventListener('click', function () { abrirCadastro(); });
   $('btnImport').addEventListener('click', function () { abrirImport(); });
   $('btnNovaDisc').addEventListener('click', function () { abrirEditorDisc(null); });
+  $('btnRetro').addEventListener('click', function () { executarRetro(); });
+  $('cfgTeto').addEventListener('change', function () {
+    var v = Math.max(1, Math.min(30, +$('cfgTeto').value || 8));
+    D.reviewBudget = v; save(); renderRevisoes(); toast('Teto: ' + v + '/dia.');
+  });
   $('miTheme').addEventListener('click', function (e) { e.stopPropagation(); cycleTheme(); });
   $('miLogout').addEventListener('click', function () {
     if (Cloud.enabled) Cloud.signOut(); else toast('Modo local — não há sessão para sair.');

@@ -23,7 +23,8 @@ O Claude lê este arquivo + `docs/` e sabe onde parou.
 - [x] **Fase 5:** Itens C/E — banco de questões (tabela banco, Dexie v2), cadastro manual + importador (JSON e linhas, com relatório de rejeição), fluxo TRAVADO confiança→resposta→taxonomia, fila de reteste (última errada ou mal calibrada), líquido real no Início/Territórios/drill/micro + Brier + gerar lote por micro · **gates: 11/11 + 66/66 + 47/47 + e2e 17/17**
 - [x] **Fase 6:** Simulado — completo 3h30/parcial/mini (duração proporcional), composição pelo blueprint via montarSimulado puro (faltantes reportados, sem corte silencioso), zero feedback durante, hard stop → restante vira BRANCO automático, correção final (líquido/pontos/Brier/diagnóstico/por-território) com taxonomia inline · **gates: itens 17/17 + e2e fase-6 11/11 + regressões**
 - [x] **Fase 7:** Discursivas — editor com bloqueio absoluto (40 linhas F1 → 80 F2; 1 linha=70 chars, premissa), cronômetro, autosave 10s local/30s nuvem, versionamento imutável com paiId, diff LCS entre versões, modo às cegas, grade de autoavaliação (4 critérios 0-10 → nota média) · **gates: puros 27/27 + e2e fase-7 11/11 + regressões**
-- [ ] **Fase 8 (próxima):** SRS — stages D+1/7/15/30 + react, reviewUrgency, teto diário, reconstrução retroativa (seedRetro), dobra ~15% em DIREITO/LOGICA/COSIF/ECONOMETRIA; gancho estudo→revisão
+- [x] **Fase 8:** SRS — D+1/7/15/30 + react, urgência atraso×10+pesoStage, Difícil=+2d sem regredir, dobra ~15% em DIR/LOG/COS/EEC, teto diário ajustável, reconstrução retroativa sem estourar teto, gancho micro→EM_ESTUDO/CONCLUIDO agenda D+1, badge na nav · **gates: puros 42/42 + e2e fase-8 11/11 + regressões**
+- [ ] **Fase 9 (próxima):** Início completo (horizontes realizado×planejado por território, pílulas, líquido em destaque) + Stats (heatmap, streaks, curva do líquido, gráfico de calibração, mapa de erros por taxonomia, progresso ponderado)
 - [ ] Fases 7–12 conforme §14 da spec
 
 ### Notas para a Fase 4

@@ -107,5 +107,44 @@ eq('2 parágrafos de 100 = 4 linhas', S.contarLinhas('y'.repeat(100) + '\n' + 'z
   eq('diff inserção no fim', S.diffLinhas('a', 'a\nb').map(l => l.tipo).join(''), '=+');
 }
 
+// ═══ SRS (Fase 8) ═══
+eq('dobra: 7d → 6d em COSIF', S.intervaloComDobra(7, 'COSIF'), 6);
+eq('dobra: 30d → 26d em ECONOMETRIA', S.intervaloComDobra(30, 'ECONOMETRIA'), 26);
+eq('sem dobra em MACRO', S.intervaloComDobra(7, 'MACRO'), 7);
+eq('dobra nunca < 1', S.intervaloComDobra(1, 'DIREITO'), 1);
+{
+  // ok avança o stage com gap do NOVO stage (ancorado em hoje)
+  const r = S.agendaRevisao({ stage: 1, territorio: 'MACRO' }, 'ok', '2026-07-20');
+  eq('stage 1→2, D+7', [r.stage, r.dueDate], [2, '2026-07-27']);
+  const rd = S.agendaRevisao({ stage: 2, territorio: 'COSIF' }, 'ok', '2026-07-20');
+  eq('stage 2→3 com dobra (15→13)', [rd.stage, rd.dueDate], [3, '2026-08-02']);
+  const dif = S.agendaRevisao({ stage: 3, territorio: 'MACRO' }, 'dificil', '2026-07-20');
+  eq('difícil: +2d SEM regredir', [dif.stage, dif.dueDate], [3, '2026-07-22']);
+  const done = S.agendaRevisao({ stage: 4, territorio: 'MACRO' }, 'ok', '2026-07-20');
+  eq('stage 4 ok → done', [done.status, done.dueDate], ['done', null]);
+  const re = S.agendaRevisao({ stage: 'react', territorio: 'LOGICA' }, 'ok', '2026-07-20');
+  eq('react promove direto p/ 2 (7→6 dobra)', [re.stage, re.dueDate], [2, '2026-07-26']);
+}
+{
+  // urgência: atraso domina; react desempata na frente
+  const h = '2026-07-20';
+  const u1 = S.reviewUrgency({ stage: 4, dueDate: '2026-07-18' }, h); // 2 dias atraso
+  const u2 = S.reviewUrgency({ stage: 'react', dueDate: '2026-07-20' }, h);
+  const u3 = S.reviewUrgency({ stage: 1, dueDate: '2026-07-20' }, h);
+  eq('atrasada vence react em dia', u1 > u2, true);
+  eq('react vence stage 1 no mesmo dia', u2 > u3, true);
+}
+{
+  // seedRetro: 5 tópicos, teto 2/dia, 1 dia já ocupado
+  const tops = [1, 2, 3, 4, 5].map(i => ({ territorio: 'COSIF', label: 'T' + i, topicId: 'T' + i }));
+  const novas = S.seedRetro(tops, '2026-07-20', 2, { '2026-07-21': 1 });
+  const porDia = {};
+  novas.forEach(n => porDia[n.dueDate] = (porDia[n.dueDate] || 0) + 1);
+  eq('nunca estoura o teto', Object.keys(porDia).every(d => porDia[d] + (d === '2026-07-21' ? 1 : 0) <= 2), true);
+  eq('começa amanhã', novas[0].dueDate, '2026-07-21');
+  eq('todas react/pending', novas.every(n => n.stage === 'react' && n.status === 'pending'), true);
+  eq('5 agendadas', novas.length, 5);
+}
+
 console.log(fails === 0 ? `✅ ${count}/${count} casos passaram` : `❌ ${fails}/${count} falharam`);
 process.exit(fails ? 1 : 0);
