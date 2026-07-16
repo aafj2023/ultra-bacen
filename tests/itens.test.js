@@ -65,5 +65,31 @@ eq('JSON inválido rejeitado', S.parseImport('[{quebrado', VALIDOS).erros[0].mot
   eq('tentativa sem bancoId é ignorada', S.filaReteste(banco, [{ correto: false, createdAt: 5 }]).length, 0);
 }
 
+
+// ═══ montarSimulado (Fase 6) ═══
+{
+  let i = 0;
+  const rnd = () => { i = (i + 13) % 97; return i / 97; };
+  const banco = [];
+  let id = 0;
+  const add = (terr, n) => { for (let k = 0; k < n; k++) banco.push({ id: ++id, territorio: terr }); };
+  add('PORTUGUES', 5); add('MACRO', 4); add('ECONOMETRIA', 2); add('ESTATISTICA', 2);
+  add('LOGICA', 1); add('FINANCAS', 3);
+  const comp = { PORTUGUES: 4, MACRO: 3, FINANCAS: 3, ESTATISTICA_ECONOMETRIA: 2, COSIF: 2, LOGICA_ESTAT: 2 };
+  const m = S.montarSimulado(banco, comp, rnd);
+  eq('sem duplicatas', new Set(m.fila.map(q => q.id)).size, m.fila.length);
+  eq('faltantes reportados (COSIF sem banco)', m.faltantes.COSIF, 2);
+  eq('total = pedido − faltante', m.fila.length, 16 - m.totalFaltante);
+  // EST pode servir os dois blocos, mas cada questão só entra uma vez
+  const est = m.fila.filter(q => ['ECONOMETRIA', 'ESTATISTICA', 'LOGICA'].includes(q.territorio)).length;
+  eq('blocos estat/lógica servidos sem duplicar', est <= 5, true);
+  const port = m.fila.filter(q => q.territorio === 'PORTUGUES').length;
+  eq('Português na proporção', port, 4);
+}
+{
+  const m = S.montarSimulado([], { MACRO: 5 }, () => 0.4);
+  eq('banco vazio → tudo faltante', [m.fila.length, m.totalFaltante], [0, 5]);
+}
+
 console.log(fails === 0 ? `✅ ${count}/${count} casos passaram` : `❌ ${fails}/${count} falharam`);
 process.exit(fails ? 1 : 0);

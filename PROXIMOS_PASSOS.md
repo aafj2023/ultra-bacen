@@ -21,8 +21,9 @@ O Claude lê este arquivo + `docs/` e sabe onde parou.
 - [x] **Fase 3:** index.html novo (single-file, blocos inline + tests extraem do index) · Cloud/gate/onboarding/dark mode · sw.js bcb-v1 · firestore.rules prontas · **gates: motor 66/66 · store 47/47 · e2e navegador 16/16 (modo idb validado)**
 - [x] **Fase 4:** Territórios completos — drill-down (grid → território → sheet do micro), transição de status com geradoEm, driveUrl validado, prereqs navegáveis, push explícito à nuvem · **gates: 66/66 + 47/47 + e2e fase-4 12/12 + regressão e2e fase-3 16/16**
 - [x] **Fase 5:** Itens C/E — banco de questões (tabela banco, Dexie v2), cadastro manual + importador (JSON e linhas, com relatório de rejeição), fluxo TRAVADO confiança→resposta→taxonomia, fila de reteste (última errada ou mal calibrada), líquido real no Início/Territórios/drill/micro + Brier + gerar lote por micro · **gates: 11/11 + 66/66 + 47/47 + e2e 17/17**
-- [ ] **Fase 6 (próxima):** Simulado 3h30 — cronômetro hard stop, composição pela proporção real do blueprint, zero feedback durante, limiar 33,33% visível, correção ao final (líquido/calibração/Brier/mapa de erros), itens→reteste, offline
-- [ ] Fases 4–12 conforme §14 da spec
+- [x] **Fase 6:** Simulado — completo 3h30/parcial/mini (duração proporcional), composição pelo blueprint via montarSimulado puro (faltantes reportados, sem corte silencioso), zero feedback durante, hard stop → restante vira BRANCO automático, correção final (líquido/pontos/Brier/diagnóstico/por-território) com taxonomia inline · **gates: itens 17/17 + e2e fase-6 11/11 + regressões**
+- [ ] **Fase 7 (próxima):** Discursivas — editor com contador/bloqueio de 80 linhas, cronômetro, autosave, versionamento imutável (paiId), diff entre versões, modo às cegas, grade de autoavaliação
+- [ ] Fases 7–12 conforme §14 da spec
 
 ### Notas para a Fase 4
 - Cópia canônica de código é o index.html; tests/_extract.js compila os blocos p/ Node.

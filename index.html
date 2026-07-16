@@ -232,7 +232,14 @@ nav button.active{color:var(--p);font-weight:700}
 
     <!-- MAIS -->
     <section class="pane" id="pane-mais">
-      <div class="card"><h2>Simulado</h2><p class="empty">Fase 6: 3h30 com hard stop, proporção real do blueprint, zero feedback durante, 100% offline.</p></div>
+      <div class="card"><h2>Simulado <span class="hint">proporção real do blueprint · zero feedback · hard stop</span></h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn small" onclick="iniciarSimulado(120)">Completo · 120 itens · 3h30</button>
+          <button class="btn sec small" onclick="iniciarSimulado(60)">Parcial · 60 · 1h45</button>
+          <button class="btn sec small" onclick="iniciarSimulado(20)">Mini · 20 · 35min</button>
+        </div>
+        <p class="empty" style="margin-top:8px">Regra da prova: +1,00 · −0,50 · 0. Marque só com p &gt; 33,33%. Ao acabar o tempo, o que faltar vira BRANCO — como na vida.</p>
+      </div>
       <div class="card"><h2>Discursivas</h2><p class="empty">Fase 7: editor com bloqueio em 80 linhas, autosave, versionamento imutável e grade de autoavaliação.</p></div>
       <div class="card"><h2>Stats & Checkpoints</h2><p class="empty">Fases 9–10: líquido acumulado, calibração (Brier), mapa de erros, CP1–CP4 com gatilho de Econometria.</p></div>
       <div class="card"><h2>⚙ Plano</h2>
@@ -1025,6 +1032,37 @@ function parseImport(texto, codigosValidos) {
   return { ok: ok, erros: erros };
 }
 
+// ── Fase 6: montagem de simulado (§12.4) ────────────────────────────────────
+// Puro. composicao = {chaveBlueprint: qtd} (vinda de composicaoSimulado).
+// Mapa blueprint→territórios do edital 2024: ESTATISTICA entra nos dois
+// blocos (específicos c/ econometria e básicos c/ lógica) sem duplicar questão.
+var BLUEPRINT_TERRITORIOS = {
+  PORTUGUES: ['PORTUGUES'], MACRO: ['MACRO'], FINANCAS: ['FINANCAS'],
+  ESTATISTICA_ECONOMETRIA: ['ECONOMETRIA', 'ESTATISTICA'], COSIF: ['COSIF'],
+  MICRO: ['MICRO'], LOGICA_ESTAT: ['LOGICA', 'ESTATISTICA'], FMM: ['FMM'],
+  DIREITO: ['DIREITO']
+};
+function embaralha(arr, rnd) {
+  for (var i = arr.length - 1; i > 0; i--) {
+    var j = Math.floor(rnd() * (i + 1)), t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  return arr;
+}
+function montarSimulado(banco, composicao, rnd) {
+  rnd = rnd || Math.random;
+  var usado = {}, fila = [], faltantes = {};
+  Object.keys(composicao).forEach(function (key) {
+    var terrs = BLUEPRINT_TERRITORIOS[key] || [key];
+    var pool = banco.filter(function (q) { return terrs.indexOf(q.territorio) >= 0 && !usado[q.id]; });
+    embaralha(pool, rnd);
+    var pega = Math.min(composicao[key], pool.length);
+    for (var i = 0; i < pega; i++) { usado[pool[i].id] = true; fila.push(pool[i]); }
+    if (pega < composicao[key]) faltantes[key] = composicao[key] - pega; // SEM corte silencioso
+  });
+  embaralha(fila, rnd);
+  return { fila: fila, faltantes: faltantes, totalFaltante: Object.keys(faltantes).reduce(function (s, k) { return s + faltantes[k]; }, 0) };
+}
+
 // ── Fase 5: fila de reteste (§12.3 passo 5) ─────────────────────────────────
 // Regra: a ÚLTIMA tentativa da questão foi errada OU mal calibrada → reteste.
 // Erro sem taxonomia não sai da fila (a UI trava, mas a regra vale aqui também).
@@ -1079,7 +1117,8 @@ var M = {
   SEED_VERSION: SEED_VERSION, PRIORIDADE_ORDEM: PRIORIDADE_ORDEM, STATUS: STATUS,
   NATUREZA: NATUREZA, buildMicros: buildMicros, buildCronograma: buildCronograma,
   SEED_CHECKPOINTS: SEED_CHECKPOINTS, proximoArquivo: proximoArquivo, seedAll: seedAll,
-  parseImport: parseImport, filaReteste: filaReteste
+  parseImport: parseImport, filaReteste: filaReteste,
+  BLUEPRINT_TERRITORIOS: BLUEPRINT_TERRITORIOS, montarSimulado: montarSimulado
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = M;
 else root.Seeds = M;
@@ -1702,6 +1741,142 @@ window.gerarLoteMicro = async function (cod) {
   goTab('itens');
   renderItemAtual();
   $('itemBack').classList.add('open');
+};
+
+// ═══════════ FASE 6 — SIMULADO (§12.4) ═══════════
+// Zero feedback durante; hard stop registra o restante como BRANCO (conf 1,
+// sem flag — branco de tempo não é erro de calibração). Estado em memória:
+// sair da página = entregar o que foi feito (premissa em DECISOES).
+var sim = null; // {fila, idx, loteId, confianca, fim, timer, duracaoSeg}
+function blueprintAtivo() { return MotorCebraspe.BLUEPRINT_2024; }
+window.iniciarSimulado = async function (n, duracaoSegOverride) {
+  if (!Store.ready) return;
+  var banco = await Store.all('banco');
+  var bp = blueprintAtivo();
+  var comp = MotorCebraspe.composicaoSimulado(bp, n);
+  var m = Seeds.montarSimulado(banco, comp);
+  if (!m.fila.length) { toast('Banco vazio — importe questões antes de simular.'); return; }
+  var duracaoSeg = duracaoSegOverride || Math.round(bp.duracaoMin * 60 * (n / bp.totalItens));
+  var lote = await Store.add('lotes', { modo: 'simulado', data: today(), alvoItens: n,
+    duracaoSeg: duracaoSeg, composicao: comp, faltantes: m.faltantes });
+  sim = { fila: m.fila, idx: 0, loteId: lote.id, confianca: null, t0: Date.now(),
+          fim: Date.now() + duracaoSeg * 1000, duracaoSeg: duracaoSeg, timer: null, entregue: false };
+  if (m.totalFaltante) toast('Banco não cobre a composição: faltam ' + m.totalFaltante + ' itens (' +
+    Object.keys(m.faltantes).map(function (k) { return k + ':' + m.faltantes[k]; }).join(', ') + '). Prova com ' + m.fila.length + '.');
+  sim.timer = setInterval(tickSim, 500);
+  renderSimItem();
+  $('itemBack').classList.add('open');
+};
+function tickSim() {
+  if (!sim) return;
+  var resta = Math.max(0, Math.ceil((sim.fim - Date.now()) / 1000));
+  var el = $('simTimer');
+  if (el) {
+    var h = Math.floor(resta / 3600), mn = Math.floor((resta % 3600) / 60), s = resta % 60;
+    el.textContent = (h ? h + ':' : '') + String(mn).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    if (resta <= 300) el.style.color = 'var(--bad)';
+  }
+  if (resta <= 0) finalizarSimulado(true); // HARD STOP
+}
+function renderSimItem() {
+  var q = sim.fila[sim.idx];
+  var passo = sim.confianca === null ? 1 : 2;
+  var html =
+    '<div style="display:flex;justify-content:space-between;align-items:center">' +
+    '<span class="sub">🕐 <b id="simTimer">—</b> · item ' + (sim.idx + 1) + '/' + sim.fila.length + '</span>' +
+    '<span class="badge">limiar ' + MotorCebraspe.LIMIAR_LABEL + '</span></div>' +
+    '<p style="font-size:.92rem;margin:10px 0 12px;white-space:pre-wrap">' + esc(q.enunciado) + '</p>';
+  if (passo === 1) {
+    html += '<label>Confiança (trava)</label><div class="stbtns">' +
+      [1, 2, 3, 4, 5].map(function (c) { return '<button onclick="simConfianca(' + c + ')">' + c + '</button>'; }).join('') + '</div>';
+  } else {
+    html += '<label>Confiança: <b>' + sim.confianca + '</b> · responda</label><div class="stbtns">' +
+      '<button onclick="simResponder(\'C\')">CERTO</button>' +
+      '<button onclick="simResponder(\'E\')">ERRADO</button>' +
+      '<button onclick="simResponder(\'BRANCO\')">BRANCO</button></div>';
+  }
+  html += '<button class="btn sec" style="margin-top:14px" onclick="finalizarSimulado(false)">Entregar prova</button>';
+  $('itemSheet').innerHTML = html;
+  tickSim();
+}
+window.simConfianca = function (c) { sim.confianca = c; renderSimItem(); };
+window.simResponder = async function (resp) {
+  var q = sim.fila[sim.idx];
+  var r = MotorCebraspe.corrigirItem(resp, q.gabarito);
+  await Store.add('itens', {
+    data: today(), bancoId: q.id, microcodigo: q.microcodigo, territorio: q.territorio,
+    loteId: sim.loteId, resposta: resp, correto: r.correto, confianca: sim.confianca,
+    tempoMs: Date.now() - sim.t0, tipoErro: null, score: r.score,
+    flagCalibracao: MotorCebraspe.erroCalibracaoItem(resp, sim.confianca)
+  });
+  // ZERO feedback: segue direto
+  if (sim.idx + 1 < sim.fila.length) { sim.idx++; sim.confianca = null; sim.t0 = Date.now(); renderSimItem(); }
+  else finalizarSimulado(false);
+};
+window.finalizarSimulado = async function (hardStop) {
+  if (!sim || sim.entregue) return;
+  sim.entregue = true;
+  clearInterval(sim.timer);
+  var inicio = sim.confianca === null ? sim.idx : sim.idx + 1; // item em curso sem resposta → branco
+  for (var i = inicio; i < sim.fila.length; i++) {
+    var q = sim.fila[i];
+    await Store.add('itens', {
+      data: today(), bancoId: q.id, microcodigo: q.microcodigo, territorio: q.territorio,
+      loteId: sim.loteId, resposta: 'BRANCO', correto: null, confianca: 1,
+      tempoMs: 0, tipoErro: null, score: 0, flagCalibracao: null, autoBranco: true
+    });
+  }
+  await Store.update('lotes', sim.loteId, { encerradoEm: Date.now(), hardStop: !!hardStop });
+  Cloud.schedulePush();
+  var loteId = sim.loteId;
+  sim = null;
+  renderCorrecao(loteId, hardStop);
+  renderItens(); renderBadges(); renderTerritorios();
+};
+async function renderCorrecao(loteId, hardStop) {
+  var ten = (await Store.all('itens')).filter(function (t) { return t.loteId === loteId; });
+  var g = agregaLiquido(ten);
+  var brancos = ten.filter(function (t) { return t.correto === null; }).length;
+  var pontos = ten.reduce(function (s, t) { return s + (t.score || 0); }, 0);
+  var brier = MotorCebraspe.brier(ten);
+  var diag = MotorCebraspe.diagnosticoCalibracao(ten);
+  var porT = {};
+  ten.forEach(function (t) { (porT[t.territorio] = porT[t.territorio] || []).push(t); });
+  var erros = ten.filter(function (t) { return t.correto === false; });
+  var banco = await Store.all('banco');
+  var qMap = {}; banco.forEach(function (q) { qMap[q.id] = q; });
+  $('itemSheet').innerHTML =
+    '<h3>Correção do simulado' + (hardStop ? ' · ⏱ tempo esgotado' : '') + '</h3>' +
+    '<div class="badges" style="margin:8px 0">' +
+    '<span class="badge">Líquido <b>' + MotorCebraspe.fmtPct(g.liq) + '</b></span>' +
+    '<span class="badge">Pontos <b>' + (pontos > 0 ? '+' : '') + pontos.toFixed(2).replace('.', ',') + '</b></span>' +
+    '<span class="badge">✔ ' + g.acertos + ' · ✘ ' + g.erros + ' · — ' + brancos + '</span>' +
+    '<span class="badge">Brier ' + (brier === null ? '—' : MotorCebraspe.fmt4(brier)) + '</span>' +
+    (diag.diag !== 'calibrado' ? '<span class="badge warn">⚠ ' + diag.diag + '</span>' : '') + '</div>' +
+    '<label>Por território (líquido)</label>' +
+    Object.keys(porT).sort().map(function (t) {
+      var a = agregaLiquido(porT[t]);
+      return '<div class="rowline"><span>' + esc(TERR_LABEL[t] || t) + '</span><b>' + MotorCebraspe.fmtPct(a.liq) + ' <small>(' + a.total + ')</small></b></div>';
+    }).join('') +
+    (erros.length ? '<label>Erros — classifique (obrigatório; tudo já está na fila de reteste)</label>' +
+      erros.map(function (t) {
+        var q = qMap[t.bancoId] || {};
+        return '<div class="rowline" id="err' + t.id + '"><div style="min-width:0"><div style="font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc((q.enunciado || '').slice(0, 90)) + '…</div>' +
+          '<div class="meta">' + esc(t.microcodigo) + ' · conf ' + t.confianca + '</div></div>' +
+          (t.tipoErro ? '<span class="stchip st-GERADO">' + esc(t.tipoErro) + '</span>'
+            : '<select onchange="classificarErroCorrecao(' + t.id + ', this.value)"><option value="">tipo…</option>' +
+              Object.keys(MotorCebraspe.TIPOS_ERRO).map(function (k) { return '<option value="' + k + '">' + k + '</option>'; }).join('') + '</select>') +
+          '</div>';
+      }).join('') : '<p class="empty">Zero erros. Os brancos não pontuam — avalie se algum tinha p &gt; 33,33%.</p>') +
+    '<button class="btn" style="margin-top:12px" onclick="fecharItem()">Fechar</button>';
+  $('itemBack').classList.add('open');
+}
+window.classificarErroCorrecao = async function (id, tipo) {
+  if (!MotorCebraspe.tipoErroValido(tipo)) return;
+  await Store.update('itens', id, { tipoErro: tipo });
+  Cloud.schedulePush();
+  var row = $('err' + id);
+  if (row) row.querySelector('select').outerHTML = '<span class="stchip st-GERADO">' + esc(tipo) + '</span>';
 };
 
 // ── cadastro manual + importador ────────────────────────────────────────────
