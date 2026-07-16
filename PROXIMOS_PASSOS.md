@@ -25,7 +25,8 @@ O Claude lê este arquivo + `docs/` e sabe onde parou.
 - [x] **Fase 7:** Discursivas — editor com bloqueio absoluto (40 linhas F1 → 80 F2; 1 linha=70 chars, premissa), cronômetro, autosave 10s local/30s nuvem, versionamento imutável com paiId, diff LCS entre versões, modo às cegas, grade de autoavaliação (4 critérios 0-10 → nota média) · **gates: puros 27/27 + e2e fase-7 11/11 + regressões**
 - [x] **Fase 8:** SRS — D+1/7/15/30 + react, urgência atraso×10+pesoStage, Difícil=+2d sem regredir, dobra ~15% em DIR/LOG/COS/EEC, teto diário ajustável, reconstrução retroativa sem estourar teto, gancho micro→EM_ESTUDO/CONCLUIDO agenda D+1, badge na nav · **gates: puros 42/42 + e2e fase-8 11/11 + regressões**
 - [x] **Fase 9:** Registro de sessões (frente+minutos+desfazer) · horizontes por território com paceBar/pmark/pílulas (pacing herdado) e total da semana · Stats: streak, heatmap 84d, curva semanal do líquido (ref CP1 60%), calibração real×esperado, mapa de erros por taxonomia, tempo médio/item, cobertura ponderada + examPacing · charts re-renderizam ao abrir o pane · **gates: e2e fase-9 13/13 + regressões**
-- [ ] **Fase 10 (próxima):** Checkpoints — CP0-CP4 com semáforo por território lendo dados reais (avaliaCheckpoint) + gatilho automático da Econometria (§9.4)
+- [x] **Fase 10:** Checkpoints CP0-CP4+GAP com semáforo lendo dados vivos (avaliaCheckpoint; futuro=meta, vencido reprovado=pendente c/ lista de mínimos) e gatilho automático da Econometria a partir da semana 10 (dispara sem dado ou <60%, desarma ao atingir; premissa: discursivas contam registros) · **gates: e2e fase-10 11/11 + regressões**
+- [ ] **Fase 11 (próxima):** Gap analysis — colar edital Auditor 2027, diff contra 2024, marcar NOVO/REMOVIDO/REFORMULADO/IGUAL, ativar dormentes, criar BLUEPRINT_2027 (recalibra limiar/pesos) sem redeploy
 - [ ] Fases 7–12 conforme §14 da spec
 
 ### Notas para a Fase 4

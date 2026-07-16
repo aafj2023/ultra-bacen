@@ -285,7 +285,10 @@ html[data-theme=dark] .hm i.l1{background:#1c5cab}html[data-theme=dark] .hm i.l2
         <label style="font-size:.72rem;color:var(--ink2);display:block;margin-top:10px">Mapa de erros (taxonomia)</label>
         <div id="stErros" class="empty">—</div>
       </div>
-      <div class="card"><h2>🎯 Checkpoints</h2><p class="empty">Fase 10: CP1–CP4 com semáforo por território e gatilho automático da Econometria.</p></div>
+      <div class="card"><h2>🎯 Checkpoints <span class="hint">critérios em líquido — sem dado = reprovado</span></h2>
+        <div id="cpAlerta"></div>
+        <div id="cpLista" class="empty">—</div>
+      </div>
       <div class="card"><h2>⚙ Plano</h2>
         <label style="font-size:.74rem;color:var(--ink2)">Data estimada da prova</label>
         <input type="date" id="cfgProva" style="margin:4px 0 10px">
@@ -1509,7 +1512,7 @@ function obNext() {
 function goTab(tab) {
   document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
   document.querySelectorAll('.pane').forEach(function (p) { p.classList.toggle('active', p.id === 'pane-' + tab); });
-  if (tab === 'mais' && typeof renderStats === 'function') renderStats(); // charts precisam do pane visível
+  if (tab === 'mais' && typeof renderStats === 'function') { renderStats(); renderCheckpoints(); } // charts precisam do pane visível
 }
 
 // ── renders da Fase 3 ───────────────────────────────────────────────────────
@@ -2016,6 +2019,57 @@ window.classificarErroCorrecao = async function (id, tipo) {
   if (row) row.querySelector('select').outerHTML = '<span class="stchip st-GERADO">' + esc(tipo) + '</span>';
 };
 
+// ═══════════ FASE 10 — CHECKPOINTS (§10 + gatilho §9.4) ═══════════
+// Premissa: "N discursivas" conta REGISTROS (cada versão é uma prática).
+async function medidasAtuais() {
+  var liq = await liquidoPorTerritorio();
+  var porT = {};
+  Object.keys(liq).forEach(function (k) { if (k !== '_global') porT[k] = liq[k].liq; });
+  var micros = await Store.all('microconteudos');
+  var cobertura = MotorRitmo.progressoPonderado(TERR_META.filter(function (t) { return t.peso > 0; }).map(function (t) {
+    var lst = micros.filter(function (m) { return m.territorio === t.id; });
+    return { id: t.id, peso: t.peso, concluidos: lst.filter(function (m) { return m.status === 'CONCLUIDO'; }).length, total: lst.length };
+  }));
+  return {
+    liquidoPorTerritorio: porT,
+    liquidoGlobal: liq._global.liq,
+    discursivas: (await Store.all('discursivas')).length,
+    itens: liq._global.total,
+    coberturaPct: cobertura
+  };
+}
+async function renderCheckpoints() {
+  if (!Store.ready) return;
+  var cps = (await Store.all('checkpoints')).sort(function (a, b) { return (a.semana || 99) - (b.semana || 99); });
+  var med = await medidasAtuais();
+  var sem = semanaAtual();
+  // gatilho automático da Econometria (dispara a partir da semana do CP1)
+  var alerta = '';
+  if (sem >= 10) {
+    var g = MotorRitmo.gatilhoReforcoEconometria(med.liquidoPorTerritorio.ECONOMETRIA);
+    if (g.dispara) alerta = '<div style="background:var(--badl);border-radius:10px;padding:10px 12px;font-size:.8rem;margin-bottom:10px">🚨 <b>Gatilho automático (§9.4):</b> ' + esc(g.motivo) + '</div>';
+  }
+  $('cpAlerta').innerHTML = alerta;
+  $('cpLista').innerHTML = cps.map(function (cp) {
+    var r = MotorRitmo.avaliaCheckpoint ? avaliaCP(cp, med) : null;
+    var futuro = cp.semana === null || sem < cp.semana;
+    var icone = r === null ? '📋' : r.aprovado ? '🟢' : futuro ? '⚪' : '🔴';
+    var head = '<div class="rowline" style="border-bottom:none;padding-bottom:2px"><div><b>' + icone + ' ' + esc(cp.id) + '</b>' +
+      ' <span class="meta">' + (cp.semana ? 'semana ' + cp.semana : '') + (cp.dataAprox ? ' · ' + esc(cp.dataAprox) : '') + '</span>' +
+      (cp.descricao ? '<div class="meta">' + esc(cp.descricao) + '</div>' : '') + '</div>' +
+      (r ? '<span class="pill ' + (r.aprovado ? 'done' : futuro ? 'ontrack' : 'behind') + '">' + (r.aprovado ? 'aprovado' : futuro ? 'meta' : 'pendente') + '</span>' : '') + '</div>';
+    var corpo = '';
+    if (r && !r.aprovado && r.pendencias.length)
+      corpo = '<div style="font-size:.74rem;color:var(--ink2);padding:0 0 8px 4px">' +
+        r.pendencias.slice(0, 8).map(function (p) { return '· ' + esc(p); }).join('<br>') + '</div>';
+    return '<div style="border-bottom:1px solid var(--line)">' + head + corpo + '</div>';
+  }).join('');
+}
+function avaliaCP(cp, med) {
+  if (!cp.criterios && cp.liquidoGlobalMin === undefined && cp.discursivasMin === undefined && cp.itensMin === undefined && cp.coberturaMin === undefined) return null;
+  return MotorRitmo.avaliaCheckpoint(cp, med);
+}
+
 // ═══════════ FASE 9 — SESSÕES, HORIZONTES E STATS ═══════════
 var FRENTES = ['MACRO','ECONOMETRIA','FINANCAS','COSIF','LOGICA','DIREITO','DISCURSIVA','DRILL',
                'PORTUGUES','MICRO','FMM','ESTATISTICA','ATU','REVISAO_ANKI','QUESTOES'];
@@ -2023,7 +2077,7 @@ window.registrarSessao = async function () {
   var terr = $('sTerr').value, min = Math.max(5, Math.min(600, +$('sMin').value || 60));
   await Store.add('sessoes', { data: today(), territorio: terr, minutos: min });
   Cloud.schedulePush();
-  renderSessoesHoje(); renderHorizontes(); renderStats();
+  renderSessoesHoje(); renderHorizontes(); renderStats(); renderCheckpoints();
   toast('+' + min + 'min em ' + (TERR_LABEL[terr] || terr) + '.');
 };
 window.desfazerSessao = async function () {
@@ -2032,7 +2086,7 @@ window.desfazerSessao = async function () {
   var ult = ss.reduce(function (m, s) { return s.createdAt > m.createdAt ? s : m; });
   await Store.remove('sessoes', ult.id);
   Cloud.schedulePush();
-  renderSessoesHoje(); renderHorizontes(); renderStats();
+  renderSessoesHoje(); renderHorizontes(); renderStats(); renderCheckpoints();
   toast('Desfeito.');
 };
 async function renderSessoesHoje() {
@@ -2427,7 +2481,7 @@ window.executarImport = async function () {
 function renderAll() {
   renderHeader(); renderBadges(); renderMissao();
   renderProximo(); renderSemanaPlano(); renderTerritorios(); renderItens(); renderDiscursivas(); renderRevisoes();
-  renderSessoesHoje(); renderHorizontes(); renderStats();
+  renderSessoesHoje(); renderHorizontes(); renderStats(); renderCheckpoints();
   $('cfgProva').value = D.provaDate;
 }
 
