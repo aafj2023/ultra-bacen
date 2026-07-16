@@ -1643,7 +1643,10 @@ async function renderBadges() {
     '<span class="badge">Prova est. em <b>' + dP + 'd</b></span>' +
     '<span class="badge">Líquido acumulado: <b>' + liq + '</b></span>';
 }
-function renderMissao() {
+// território→código de território (ALVO_F1 usa nomes que já batem com TERR_LABEL,
+// exceto blocos que não são um território real: DISCURSIVA/DRILL/REVISAO_ANKI/QUESTOES)
+var BLOCO_TEM_TOPICO = ['MACRO', 'ECONOMETRIA', 'FINANCAS', 'COSIF', 'LOGICA', 'DIREITO'];
+async function renderMissao() {
   var dow = (new Date().getDay() + 6) % 7;
   var DIA = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'];
   $('mTitle').textContent = '· semana-tipo Fase 1, ' + DIA[dow];
@@ -1652,8 +1655,16 @@ function renderMissao() {
     var horas = Math.floor(h), min = Math.round((h - horas) * 60);
     return (horas ? horas + 'h' : '') + (min ? (horas ? '' : '0h') + String(min).padStart(2, '0') : (horas ? '' : '0h'));
   }
+  var micros = Store.ready ? await Store.all('microconteudos') : [];
   $('missao').innerHTML = blocos.map(function (b) {
-    return '<li><span>' + esc(TERR_LABEL[b.t] || b.t) + '</span><span class="h">' + fmtH(b.h) + '</span></li>';
+    var sub = '';
+    if (BLOCO_TEM_TOPICO.indexOf(b.t) >= 0) {
+      var pend = micros.filter(function (m) { return m.territorio === b.t && !m.dormente && m.status !== 'CONCLUIDO'; }).sort(ordenaFila);
+      if (pend.length) sub = '<div class="meta" style="font-size:.72rem;margin-top:2px">➜ <b>' + esc(pend[0].codigo) + '</b> — ' + esc(pend[0].nome) + '</div>';
+      else sub = '<div class="meta" style="font-size:.72rem;margin-top:2px">✅ tudo concluído nesta frente</div>';
+    }
+    var clique = (BLOCO_TEM_TOPICO.indexOf(b.t) >= 0) ? ' onclick="openTerr(\'' + b.t + '\')" style="cursor:pointer"' : '';
+    return '<li' + clique + '><div><span>' + esc(TERR_LABEL[b.t] || b.t) + '</span>' + sub + '</div><span class="h">' + fmtH(b.h) + '</span></li>';
   }).join('');
 }
 async function renderProximo() {
