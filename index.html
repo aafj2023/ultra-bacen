@@ -1678,8 +1678,42 @@ async function renderProximo() {
     '<div class="meta" style="font-size:.72rem;color:var(--ink3)">' + esc(TERR_LABEL[p.territorio] || p.territorio) + ' · ' + esc(p.itemEdital || '') + ' · dif. ' + esc(p.dificuldade || '—') + '</div></div>' +
     '<div style="display:flex;flex-direction:column;gap:6px;align-items:end">' +
     '<span class="tag ' + p.prioridade.toLowerCase() + '">' + esc(p.prioridade) + '</span>' +
-    '<button class="btn sec small" onclick="copiarCodigo(\'' + esc(p.codigo) + '\')">Copiar código</button></div></div>';
+    '<button class="btn small" onclick="copiarPrompt(\'' + esc(p.codigo) + '\')">📝 Copiar prompt da aula</button>' +
+    '<button class="btn sec small" onclick="copiarCodigo(\'' + esc(p.codigo) + '\')">Copiar código</button></div></div>' +
+    '<p class="empty" style="margin-top:8px">➜ Cole o prompt numa conversa <b>nova</b> com o Claude. Ele gera a aula; salve-a no Drive e cole o link na ficha do assunto (aba Territórios).</p>';
 }
+var NATUREZA_TXT = {
+  RECONSTRUCAO: 'Nunca estudei isso formalmente (ou preciso reconstruir do zero). Comece pelo conceito básico, sem pular passo nenhum.',
+  BLINDAGEM: 'Já tenho experiência prática forte nisso (mercado financeiro). Vá direto ao ponto técnico-formal cobrado em prova, cobrando premissas exatas dos modelos — não preciso de introdução básica.',
+  MANUTENCAO: 'Tenho uma base razoável. Foque em revisão condensada + questões, sem se alongar na teoria.',
+  HEDGE: 'É uma matéria de peso baixo no edital para mim. Aula enxuta e objetiva, direto pro que cai em prova.'
+};
+function promptMestre(m) {
+  return [
+    'Você é meu professor particular para o concurso de Auditor do Banco Central (área Economia e Finanças), banca Cebraspe (itens certo/errado).',
+    'Meu perfil: economista, CFP, ex-assessor de investimentos (XP, Warren), hoje FP&A. Aprendo melhor por CONTRASTE (tabelas comparando conceitos parecidos) e exemplos numéricos, não só teoria abstrata.',
+    '',
+    'Gere uma aula completa sobre o assunto abaixo, estruturada assim:',
+    '1. Conceito central explicado do zero, com analogia simples',
+    '2. Desenvolvimento formal (fórmulas/gráfico descrito em texto, passo a passo)',
+    '3. Tabela de contraste com conceitos parecidos que costumam confundir',
+    '4. 3 pegadinhas típicas de prova nesse assunto',
+    '5. 8 questões estilo Cebraspe (certo/errado) com gabarito comentado no final',
+    '6. Resumo de 5 linhas para revisão rápida antes da prova',
+    '',
+    'Assunto: ' + m.codigo + ' — ' + m.nome,
+    'Matéria: ' + (TERR_LABEL[m.territorio] || m.territorio || '—') + ' · Item do edital: ' + (m.itemEdital || '—') + ' · Dificuldade: ' + (m.dificuldade || '—'),
+    'Meu domínio atual deste assunto: ' + (NATUREZA_TXT[m.natureza] || 'Nível médio — pode assumir conhecimento básico prévio.')
+  ].join('\n');
+}
+window.copiarPrompt = function (cod) {
+  Store.get('microconteudos', cod).then(function (m) {
+    var texto = promptMestre(m);
+    (navigator.clipboard ? navigator.clipboard.writeText(texto) : Promise.reject())
+      .then(function () { toast('Prompt copiado! Cole numa conversa NOVA com o Claude.'); })
+      .catch(function () { prompt('Copie manualmente (Ctrl+C):', texto); });
+  });
+};
 window.copiarCodigo = function (cod) {
   (navigator.clipboard ? navigator.clipboard.writeText(cod) : Promise.reject())
     .then(function () { toast(cod + ' copiado — cole no Prompt Mestre.'); })
@@ -1790,6 +1824,11 @@ window.openMicro = async function (cod) {
     (m.geradoEm ? ' · gerado em ' + esc(m.geradoEm) : '') +
     (m.dormente ? ' · 💤 dormente (gatilho: ' + esc(m.gatilho) + ')' : '') + '</div>' +
     '<label>Status</label><div class="stbtns">' + stBtns + '</div>' +
+    (m.driveUrl ? '' :
+      '<div style="background:var(--pl);border-radius:10px;padding:10px 12px;margin:10px 0">' +
+      '<b style="font-size:.82rem">📝 Ainda não tem aula deste assunto?</b>' +
+      '<p style="font-size:.78rem;margin:4px 0 8px;color:var(--ink2)">1) Copie o prompt · 2) Cole numa conversa NOVA com o Claude · 3) Salve a aula no Drive · 4) Cole o link abaixo.</p>' +
+      '<button class="btn small" onclick="copiarPrompt(\'' + cod + '\')">📋 Copiar prompt da aula</button></div>') +
     '<label>Arquivo no Drive (.md gerado pelo Prompt Mestre)</label>' +
     '<div style="display:flex;gap:6px"><input type="url" id="mDrive" placeholder="https://…" value="' + esc(m.driveUrl || '') + '">' +
     '<button class="btn small" onclick="salvarDrive(\'' + cod + '\')">Salvar</button></div>' +
